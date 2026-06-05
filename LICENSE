@@ -1,0 +1,100 @@
+Claude Radar — License
+Copyright (c) 2026 Leif Diao
+
+This work is licensed under the
+Creative Commons Attribution-NonCommercial 4.0 International License
+(CC BY-NC 4.0).
+
+================================================================
+Plain-English summary
+================================================================
+
+YOU MAY:
+  • Use Claude Radar for personal, educational, research, or any
+    other non-commercial purpose
+  • Modify, fork, and build derivative works on top of it
+  • Share copies and modified versions, freely
+
+YOU MUST:
+  • Give appropriate credit — link back to the original repository
+    (https://github.com/LeifDiao/claude-radar) and name the author
+  • Indicate clearly if you made changes
+  • Apply the same NonCommercial restriction to any derivative work
+
+YOU MAY NOT:
+  • Use Claude Radar — or anything substantially derived from it —
+    for commercial purposes without a separate commercial license
+
+================================================================
+Commercial use
+================================================================
+
+The following uses require a separate commercial license:
+
+  • Bundling Claude Radar (or a derivative) into a paid product
+    or service
+  • Internal use in a for-profit organization that goes beyond
+    individual employees evaluating their own sessions
+  • Hosting Claude Radar as a paid SaaS or other paid offering
+  • Selling reports, analyses, or aggregated insights produced
+    using Claude Radar's scoring engine
+  • Using Claude Radar's scoring or diagnosis output as part of
+    a commercial assessment, certification, or coaching service
+
+For commercial licensing — including pricing, terms, and any
+custom arrangements — please contact:
+
+    Leif Diao
+    leifdiao@gmail.com
+    https://github.com/LeifDiao
+
+================================================================
+中文摘要 (Chinese summary)
+================================================================
+
+本作品采用 知识共享 署名-非商业性使用 4.0 国际许可协议
+（CC BY-NC 4.0）授权。
+
+允许的使用：
+  • 个人、教育、研究及任何非商业用途
+  • 修改、fork、基于本作品做二次开发
+  • 自由分享原作品或修改后的版本
+
+必须遵守：
+  • 注明原作者及原仓库出处
+    （https://github.com/LeifDiao/claude-radar）
+  • 如对内容做了修改，须明确标注
+  • 衍生作品须沿用相同的"非商业"限制
+
+不允许的使用：
+  • 任何形式的商业用途，未取得单独商业授权前
+
+----------------------------------------------------------------
+商业授权
+----------------------------------------------------------------
+
+以下场景属于商业用途，须申请单独的商业授权：
+
+  • 将 Claude Radar（或其衍生作品）打包进付费产品或服务
+  • 在营利性组织内部超出"员工个人评估自己会话"范围的使用
+  • 将 Claude Radar 托管为付费 SaaS 或其他付费服务
+  • 利用其评分输出销售报告、分析或汇总洞察
+  • 将其评分或诊断结果用作商业评估、认证或培训服务的一部分
+
+如需商业授权（含价格、条款及定制安排），请联系：
+
+    Leif Diao
+    leifdiao@gmail.com
+    https://github.com/LeifDiao
+
+================================================================
+Full legal text
+================================================================
+
+Human-readable deed:
+  https://creativecommons.org/licenses/by-nc/4.0/
+
+Full legal code:
+  https://creativecommons.org/licenses/by-nc/4.0/legalcode
+
+SPDX-License-Identifier: CC-BY-NC-4.0

@@ -1,0 +1,13 @@
+{
+  "name": "claude-radar-marketplace",
+  "owner": {
+    "name": "Leif Diao"
+  },
+  "plugins": [
+    {
+      "name": "claude-radar",
+      "description": "Review your Claude Code collaboration across 9 dimensions in 3 categories (Communication / Engineering / Outcome) — project-type-aware fair scoring, a free-form AI diagnosis, and pastable prompt rewrites. 100% local single-file HTML report.",
+      "source": "./"
+    }
+  ]
+}

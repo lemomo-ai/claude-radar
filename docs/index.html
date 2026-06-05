@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Radar — How well do you collaborate with AI?</title>
+<meta name="description" content="Claude Radar reads your project conversation records and grades AI collaboration across 9 dimensions in 3 categories (Communication / Engineering / Outcome), produces an AI diagnosis with pastable prompt rewrites, and outputs a professional, readable HTML dashboard. 100% local.">
+<meta property="og:title" content="Claude Radar — Decode your AI collaboration">
+<meta property="og:description" content="9 dimensions × 3 categories. Free-form AI diagnosis. Pastable prompt rewrites. Professional, readable HTML dashboard. 100% local.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://leifdiao.github.io/claude-radar/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Claude Radar — Decode your AI collaboration">
+<meta name="twitter:description" content="Communication. Engineering. Outcome. 9 dimensions. AI diagnosis with copyable prompts. All local.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* ── Surfaces · warm ivory ── */
+    --bg-page:  #F7F4EC;
+    --bg-cream: #F1ECE0;
+    --bg-0:     #EDE8DB;
+    --bg-1:     #FFFFFF;
+    --bg-2:     #FBFAF4;
+    --bg-3:     #F2EEE3;
+    --bg-ink:   #211F19;
+
+    /* ── Text · warm neutrals ── */
+    --text-1: #1A1915;
+    --text-2: #3B3933;
+    --text-3: #615D53;
+    --text-4: #847F72;
+    --text-5: #A6A192;
+
+    /* ── Hairlines ── */
+    --border-1: rgba(26,25,21,0.06);
+    --border-2: rgba(26,25,21,0.10);
+    --border-3: rgba(26,25,21,0.16);
+
+    /* ── Accent · Anthropic terracotta (used sparingly) ── */
+    --accent:      #D97757;
+    --accent-deep: #BE5A37;
+    --accent-2:    #AC4F2D;
+    --accent-3:    #E8AE94;
+    --accent-soft: #F6E9E1;
+    --accent-line: rgba(217,119,87,0.30);
+
+    /* ── Grades · muted, legible on light ── */
+    --grade-s: #2F7D58; --grade-a: #3E7C6B; --grade-b: #B07C32; --grade-c: #C0673A; --grade-d: #B0463B;
+
+    /* ── Category accents · earthy ── */
+    --cat-comm: #C26043;
+    --cat-eng:  #5C7184;
+    --cat-out:  #B07C32;
+
+    --shadow-card: 0 1px 2px rgba(26,25,21,0.04), 0 8px 22px rgba(26,25,21,0.05);
+    --shadow-card-hover: 0 2px 5px rgba(26,25,21,0.06), 0 16px 38px rgba(26,25,21,0.09);
+
+    --font-serif: 'Fraunces', ui-serif, Georgia, 'Times New Roman', 'PingFang SC', serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', system-ui, sans-serif;
+    --font-zh: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Source Han Sans SC', 'Noto Sans CJK SC', system-ui, sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--bg-page);
+    background-image:
+      radial-gradient(circle at 50% -12%, rgba(204,120,92,0.07) 0%, transparent 52%),
+      radial-gradient(circle at 86% 6%, rgba(204,120,92,0.045) 0%, transparent 40%);
+    background-attachment: fixed;
+    color: var(--text-1);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 36px; }
+
+  @keyframes dotPulse { 0%, 100% { opacity: 0.5; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1); } }
+  @keyframes greenGlow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+
+  /* ── Nav ── */
+  nav { display:flex; justify-content:space-between; align-items:center; padding:22px 0; }
+  .brand { display:flex; align-items:center; gap:11px; font-weight:600; font-size:18px; letter-spacing:-0.2px; color:var(--text-1); }
+  .brand-mark {
+    width: 30px; height: 30px;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brand-mark svg { width: 100%; height: 100%; color: var(--accent); }
+  .brand-text { color: var(--text-1); }
+  .nav-r { display:flex; align-items:center; gap:20px; }
+  .nav-r a { color:var(--text-3); text-decoration:none; font-size:13.5px; font-weight:500; transition:color .18s; }
+  .nav-r a:hover { color:var(--accent-2); }
+  .lang-btn {
+    background:transparent; border:1px solid var(--border-3); color:var(--text-2);
+    padding:5px 13px; border-radius:999px; font-size:11.5px; font-weight:600; cursor:pointer;
+    transition:all .18s; font-family:inherit; letter-spacing:.3px;
+  }
+  .lang-btn:hover { background:var(--text-1); border-color:var(--text-1); color:var(--bg-page); }
+
+  /* ── Hero ── */
+  .hero { display:grid; grid-template-columns:1.05fr 1fr; gap:56px; align-items:center; padding:64px 0 60px; position:relative; }
+  .hero-text { position:relative; z-index:1; }
+  .hero-badge {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:6px 14px; background:var(--accent-soft);
+    border:1px solid var(--accent-line); border-radius:999px;
+    font-size:11px; font-weight:700; color:var(--accent-2); letter-spacing:.6px; margin-bottom:24px;
+  }
+  .hero-badge .dot { width:6px; height:6px; border-radius:50%; background:var(--accent); animation:dotPulse 2.4s ease-in-out infinite; }
+  .hero h1 {
+    font-family:var(--font-serif);
+    font-size:clamp(36px,5.2vw,58px); font-weight:500; letter-spacing:-1px;
+    line-height:1.08; margin:0 0 20px; color:var(--text-1);
+  }
+  .hero h1 .g { color:var(--accent-deep); }
+  .hero-sub { font-size:16.5px; color:var(--text-3); line-height:1.72; margin:0 0 30px; max-width:500px; }
+  .hero-cta { display:flex; gap:12px; flex-wrap:wrap; }
+  .btn {
+    display:inline-flex; align-items:center; gap:7px; text-decoration:none;
+    font-family:inherit; cursor:pointer; border:none; transition:all .18s;
+  }
+  .btn-sm { padding:12px 24px; border-radius:999px; font-size:14px; font-weight:600; }
+  .btn-primary { background:var(--accent-deep); color:#fff; box-shadow:0 1px 2px rgba(26,25,21,.12); }
+  .btn-primary:hover { background:#A94E2D; transform:translateY(-1px); box-shadow:0 6px 18px rgba(190,90,55,0.28); }
+  .btn-ghost { background:transparent; color:var(--text-1); border:1px solid var(--border-3); }
+  .btn-ghost:hover { background:var(--bg-1); border-color:var(--text-2); }
+
+  /* Dashboard preview card */
+  .preview {
+    background: var(--bg-1);
+    border: 1px solid var(--border-2);
+    border-radius: 18px;
+    padding: 20px 20px 22px;
+    box-shadow: var(--shadow-card);
+    position: relative;
+    overflow: hidden;
+  }
+  .preview-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .preview-brand { font-size:9px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-4); display:flex; align-items:center; gap:5px; }
+  .preview-brand svg { color: var(--accent); }
+  .preview-meta { font-size:9px; color:var(--text-5); font-weight:500; }
+  .preview-hero {
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:16px 16px 18px;
+    background:var(--bg-2);
+    border:1px solid var(--border-1);
+    border-radius:12px;
+    margin-bottom:12px;
+  }
+  .preview-insight { font-size:12.5px; line-height:1.55; color:var(--text-2); font-weight:500; max-width:210px; }
+  .preview-profile { font-size:9px; font-weight:700; color:var(--accent-2); padding:3px 9px; background:var(--accent-soft); border-radius:999px; display:inline-flex; align-items:center; gap:4px; margin-bottom:8px; letter-spacing:0.3px; }
+  .preview-grade-letter { font-family:var(--font-serif); font-size:52px; font-weight:500; line-height:1; color:var(--grade-a); }
+  .preview-grade-score { font-size:10px; color:var(--text-4); font-weight:600; margin-top:2px; }
+  .preview-cats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .preview-cat {
+    padding:11px 12px; border-radius:10px;
+    background:var(--bg-2); border:1px solid var(--border-1);
+    position:relative; overflow:hidden;
+  }
+  .preview-cat::before { content:""; position:absolute; top:0; left:0; right:0; height:2px; background:var(--cat-color); }
+  .preview-cat[data-c="comm"] { --cat-color: var(--cat-comm); }
+  .preview-cat[data-c="eng"] { --cat-color: var(--cat-eng); }
+  .preview-cat[data-c="out"] { --cat-color: var(--cat-out); }
+  .preview-cat-name { font-size:9px; font-weight:700; color:var(--text-4); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:5px; }
+  .preview-cat-score { display:flex; align-items:baseline; gap:5px; }
+  .preview-cat-num { font-size:21px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .preview-cat-grade { font-size:9px; font-weight:800; padding:1px 5px; border-radius:4px; }
+
+  /* ── Sections ── */
+  section { padding:72px 0; }
+  .stitle {
+    display:flex; align-items:center; justify-content:center; gap:12px;
+    font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--text-4); margin-bottom:14px;
+  }
+  .stitle::before,.stitle::after { content:""; width:24px; height:1px; background:var(--border-3); }
+  .sheading { text-align:center; margin-bottom:48px; }
+  .sheading h2 { font-family:var(--font-serif); font-size:clamp(28px,3.6vw,38px); font-weight:500; letter-spacing:-0.6px; margin:0 0 14px; color:var(--text-1); }
+  .sheading p { color:var(--text-3); font-size:15.5px; margin:0 auto; max-width:540px; line-height:1.7; }
+
+  /* ── Feature cards ── */
+  .new-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  .ncard {
+    background:var(--bg-1); border:1px solid var(--border-2); border-radius:16px;
+    padding:26px 24px; transition:all .2s; box-shadow:var(--shadow-card);
+  }
+  .ncard:hover { border-color:var(--accent-line); box-shadow:var(--shadow-card-hover); transform:translateY(-2px); }
+  .ncard-icon {
+    width:40px; height:40px; border-radius:11px; margin-bottom:16px;
+    background:var(--accent-soft); border:1px solid var(--accent-line);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .ncard-icon svg { width:19px; height:19px; stroke:var(--accent-2); fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+  .ncard h3 { font-size:15.5px; font-weight:700; margin:0 0 8px; color:var(--text-1); }
+  .ncard p { font-size:13px; color:var(--text-3); margin:0; line-height:1.65; }
+  .ncard p strong { color:var(--text-1); font-weight:600; }
+
+  /* ── 3 Categories × 9 Dimensions ── */
+  .cats-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  .cat-card {
+    background:var(--bg-1); border:1px solid var(--border-2); border-radius:16px;
+    padding:24px 24px 20px; position:relative; overflow:hidden;
+    box-shadow:var(--shadow-card);
+  }
+  .cat-card::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; background:var(--cat-color); }
+  .cat-card[data-c="comm"] { --cat-color: var(--cat-comm); }
+  .cat-card[data-c="eng"] { --cat-color: var(--cat-eng); }
+  .cat-card[data-c="out"] { --cat-color: var(--cat-out); }
+  .cat-head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px; }
+  .cat-name { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--cat-color); }
+  .cat-count { font-size:10px; font-weight:700; color:var(--text-5); }
+  .cat-desc { font-size:12px; color:var(--text-3); margin-bottom:18px; line-height:1.5; }
+  .cat-dims { display:flex; flex-direction:column; gap:8px; }
+  .cat-dim {
+    background:var(--bg-2);
+    border:1px solid var(--border-1);
+    border-radius:10px;
+    padding:11px 13px;
+  }
+  .cat-dim-name { font-size:13px; font-weight:600; color:var(--text-1); }
+  .cat-dim-zh { font-size:10px; color:var(--cat-color); font-weight:600; margin-top:1px; }
+  .cat-dim-desc { font-size:11.5px; color:var(--text-4); margin-top:4px; line-height:1.5; }
+
+  /* ── Diagnosis ── */
+  .diag-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; max-width:880px; margin:0 auto; }
+  .diag-card {
+    background:var(--bg-1); border:1px solid var(--border-2); border-radius:16px;
+    padding:26px 28px; box-shadow:var(--shadow-card);
+  }
+  .diag-card.wide { grid-column:1/-1; }
+  .diag-label {
+    font-size:10px; font-weight:700; text-transform:uppercase;
+    letter-spacing:0.9px; color:var(--text-4); margin-bottom:12px;
+    display:flex; align-items:center; gap:7px;
+  }
+  .diag-label .label-dot { width:6px; height:6px; border-radius:50%; background:var(--accent); }
+  .diag-quote { font-family:var(--font-serif); font-size:16px; line-height:1.65; color:var(--text-2); font-style:italic; }
+  .diag-quote strong { color:var(--accent-2); font-style:normal; font-weight:600; }
+  .diag-meta { font-family:var(--font-sans); font-style:normal; font-size:11.5px; color:var(--text-4); margin-top:12px; padding-top:12px; border-top:1px solid var(--border-1); }
+
+  /* ── Profile (fairness pitch) ── */
+  .profiles { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; max-width:780px; margin:0 auto 26px; }
+  .pf {
+    padding:11px 17px; border-radius:999px;
+    background:var(--bg-1); border:1px solid var(--border-2);
+    font-size:12.5px; color:var(--text-2);
+    display:flex; align-items:center; gap:9px;
+    box-shadow:0 1px 2px rgba(26,25,21,0.03);
+  }
+  .pf strong { color:var(--text-1); font-weight:700; }
+  .pf-tag { font-size:9px; padding:2px 7px; border-radius:999px; background:var(--accent-soft); color:var(--accent-2); font-weight:700; letter-spacing:0.3px; }
+  .fairness-quote {
+    max-width:700px; margin:0 auto; padding:20px 26px;
+    background:var(--bg-1); border:1px solid var(--border-2); border-left:3px solid var(--accent);
+    border-radius:12px;
+    font-size:14.5px; color:var(--text-2); line-height:1.7;
+    box-shadow:var(--shadow-card);
+  }
+  .fairness-quote strong { color:var(--accent-2); font-weight:700; }
+
+  /* ── Steps ── */
+  .steps { display:flex; gap:16px; justify-content:center; flex-wrap:wrap; }
+  .scard {
+    flex:1; min-width:200px; max-width:280px;
+    background:var(--bg-1); border:1px solid var(--border-2); border-radius:16px;
+    padding:28px 24px; text-align:center; box-shadow:var(--shadow-card);
+  }
+  .scard-num {
+    width:36px; height:36px; background:var(--accent-deep);
+    color:#fff; border-radius:999px; display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:15px; margin:0 auto 16px;
+  }
+  .scard h3 { font-size:15px; font-weight:700; margin:0 0 6px; color:var(--text-1); }
+  .scard p { font-size:12.5px; color:var(--text-3); margin:0; }
+  .scard code {
+    display:inline-block; background:var(--bg-0); border:1px solid var(--border-2);
+    padding:6px 13px; border-radius:8px; font-size:11.5px; margin-top:14px;
+    font-family:ui-monospace,'SF Mono','Menlo','Consolas',monospace; color:var(--accent-2);
+  }
+
+  /* ── Privacy ── */
+  .pills { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
+  .pill {
+    display:flex; align-items:center; gap:8px; padding:9px 17px;
+    background:var(--bg-1); border:1px solid var(--border-2); border-radius:999px;
+    font-size:12.5px; font-weight:500; color:var(--text-2);
+    box-shadow:0 1px 2px rgba(26,25,21,0.03);
+  }
+  .pill .dot { width:6px; height:6px; background:var(--grade-s); border-radius:999px; animation:greenGlow 2.4s ease infinite; }
+
+  /* ── Install ── */
+  .icard {
+    max-width:580px; margin:0 auto; background:var(--bg-1); border:1px solid var(--border-2);
+    border-radius:20px; padding:36px 32px; text-align:center; position:relative; overflow:hidden;
+    box-shadow:var(--shadow-card);
+  }
+  .icard h2 { font-family:var(--font-serif); }
+  .icard pre {
+    background:var(--bg-ink); border:1px solid rgba(0,0,0,0.18); border-radius:12px;
+    padding:16px 20px; margin:16px 0; font-family:ui-monospace,'SF Mono','Menlo','Consolas',monospace;
+    font-size:13px; color:#ECE7D8; text-align:left; position:relative; overflow-x:auto; line-height:1.75;
+  }
+  .icard .hint { color:var(--text-4); font-size:12.5px; margin:14px 0 0; position:relative; }
+
+  /* ── Footer ── */
+  footer { padding:48px 0 40px; border-top:1px solid var(--border-2); text-align:center; color:var(--text-4); font-size:12px; margin-top:24px; }
+  footer a { color:var(--text-3); text-decoration:none; margin:0 11px; transition:color .18s; }
+  footer a:hover { color:var(--accent-2); }
+
+  /* ── Chinese typography · clean sans, never serif / faux-italic ── */
+  html[lang="zh"] .hero h1,
+  html[lang="zh"] .sheading h2,
+  html[lang="zh"] .icard h2 {
+    font-family: var(--font-zh);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  html[lang="zh"] .hero h1 { line-height: 1.2; }
+  html[lang="zh"] .diag-quote {
+    font-family: var(--font-zh);
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1.8;
+  }
+  html[lang="zh"] .hero-sub,
+  html[lang="zh"] .sheading p,
+  html[lang="zh"] .fairness-quote { line-height: 1.85; }
+
+  @media(max-width:860px) {
+    .hero { grid-template-columns:1fr; text-align:center; gap:36px; }
+    .hero-sub { margin-left:auto; margin-right:auto; }
+    .hero-cta { justify-content:center; }
+    .cats-grid, .new-cards { grid-template-columns:1fr; }
+    .diag-grid { grid-template-columns:1fr; }
+  }
+  @media(max-width:640px) {
+    .wrap { padding:0 20px; }
+    .hero { padding:44px 0 32px; }
+    .hero h1 { font-size:34px; letter-spacing:-0.5px; }
+    .steps { flex-direction:column; align-items:center; }
+    section { padding:52px 0; }
+    .nav-r a { display:none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 32 32" fill="none">
+          <polygon points="16 3 28 9.5 28 22.5 16 29 4 22.5 4 9.5" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="2.5" fill="currentColor"/>
+        </svg>
+      </div>
+      <span class="brand-text">Claude Radar</span>
+    </div>
+    <div class="nav-r">
+      <a href="https://github.com/LeifDiao/claude-radar">GitHub</a>
+      <a href="https://github.com/LeifDiao/claude-radar/blob/main/docs/METHODOLOGY.md" id="navM" data-en="Methodology" data-zh="方法论">Methodology</a>
+      <button class="lang-btn" id="langToggle">中文</button>
+    </div>
+  </nav>
+
+  <!-- ═══ HERO ═══ -->
+  <section class="hero">
+    <div class="hero-text">
+      <div class="hero-badge"><span class="dot"></span><span data-en="CLAUDE CODE PLUGIN" data-zh="CLAUDE CODE 插件">CLAUDE CODE PLUGIN</span></div>
+      <h1 data-en="Decode how you<br><span class='g'>collaborate with AI.</span>" data-zh="解码你和 AI<br><span class='g'>的协作模式。</span>">Decode how you<br><span class="g">collaborate with AI.</span></h1>
+      <p class="hero-sub" data-en="Claude Radar reads your project conversation records and grades AI collaboration across 9 dimensions in 3 categories, then writes a free-form AI diagnosis and at-least-5 improvement suggestions with pastable prompt rewrites — all in a professional, readable HTML dashboard. 100% local." data-zh="Claude Radar 读取你的项目对话记录，从沟通力 / 工程力 / 成效 三大类 9 个维度评估，生成 AI 自由撰写的诊断和至少 5 条可直接粘贴的 prompt 改写建议，输出在一个专业可读的 HTML dashboard 中。全程本地。">Claude Radar reads your project conversation records and grades AI collaboration across 9 dimensions in 3 categories, then writes a free-form AI diagnosis and at-least-5 improvement suggestions with pastable prompt rewrites — all in a professional, readable HTML dashboard. 100% local.</p>
+      <div class="hero-cta">
+        <a href="https://github.com/LeifDiao/claude-radar" class="btn btn-sm btn-primary" data-en="Get Claude Radar" data-zh="免费使用">Get Claude Radar</a>
+        <a href="https://github.com/LeifDiao/claude-radar/blob/main/docs/METHODOLOGY.md" class="btn btn-sm btn-ghost" id="ctaM" data-en="How it works" data-zh="评分原理">How it works</a>
+      </div>
+    </div>
+
+    <!-- Dashboard preview card -->
+    <div class="preview">
+      <div class="preview-head">
+        <div class="preview-brand">
+          <svg viewBox="0 0 32 32" width="10" height="10" fill="none">
+            <polygon points="16 3 28 9.5 28 22.5 16 29 4 22.5 4 9.5" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+            <circle cx="16" cy="16" r="2" fill="currentColor"/>
+          </svg>
+          Claude Radar
+        </div>
+        <div class="preview-meta" data-en="sample report" data-zh="示例报告">sample report</div>
+      </div>
+      <div class="preview-hero">
+        <div>
+          <div class="preview-profile"><span style="width:5px;height:5px;border-radius:50%;background:currentColor;"></span><span data-en="LONG-RUNNING" data-zh="长期项目">LONG-RUNNING</span></div>
+          <div class="preview-insight" data-en="You command Claude precisely, but rarely ask it to second-guess itself." data-zh="你指挥 Claude 很精准，但几乎不让它质疑自己。">You command Claude precisely, but rarely ask it to second-guess itself.</div>
+        </div>
+        <div style="text-align:right">
+          <div class="preview-grade-letter">A</div>
+          <div class="preview-grade-score">74 / 100</div>
+        </div>
+      </div>
+      <div class="preview-cats">
+        <div class="preview-cat" data-c="comm">
+          <div class="preview-cat-name" data-en="Comm" data-zh="沟通力">Comm</div>
+          <div class="preview-cat-score">
+            <span class="preview-cat-num" style="color:var(--grade-a)">78</span>
+            <span class="preview-cat-grade" style="background:rgba(62,124,107,0.16);color:var(--grade-a)">A</span>
+          </div>
+        </div>
+        <div class="preview-cat" data-c="eng">
+          <div class="preview-cat-name" data-en="Eng" data-zh="工程力">Eng</div>
+          <div class="preview-cat-score">
+            <span class="preview-cat-num" style="color:var(--grade-b)">62</span>
+            <span class="preview-cat-grade" style="background:rgba(176,124,50,0.16);color:var(--grade-b)">B</span>
+          </div>
+        </div>
+        <div class="preview-cat" data-c="out">
+          <div class="preview-cat-name" data-en="Out" data-zh="成效">Out</div>
+          <div class="preview-cat-score">
+            <span class="preview-cat-num" style="color:var(--grade-a)">80</span>
+            <span class="preview-cat-grade" style="background:rgba(62,124,107,0.16);color:var(--grade-a)">A</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Key features ═══ -->
+  <section>
+    <div class="stitle" data-en="Key Features" data-zh="核心特性">Key Features</div>
+    <div class="sheading">
+      <h2 data-en="Three layers of evaluation" data-zh="三层评估">Three layers of evaluation</h2>
+      <p data-en="Claude Radar grades how you talk to AI, how you set up the platform, and what you actually ship." data-zh="Claude Radar 评估你怎么和 AI 说话、怎么搭建工程化环境、最终交付了什么。">Claude Radar grades how you talk to AI, how you set up the platform, and what you actually ship.</p>
+    </div>
+    <div class="new-cards">
+      <div class="ncard">
+        <div class="ncard-icon">
+          <svg viewBox="0 0 24 24"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/><polyline points="12 22 12 15.5"/></svg>
+        </div>
+        <h3 data-en="9 dimensions × 3 categories" data-zh="9 维 × 3 类">9 dimensions × 3 categories</h3>
+        <p data-en="<strong>Communication</strong> — how clearly you direct AI. <strong>Engineering</strong> — your platform leverage (Skill / MCP / Subagent / CLAUDE.md / Plan mode). <strong>Outcome</strong> — what actually gets shipped (efficiency, verification, clean closure)." data-zh="<strong>沟通力</strong> —— 你怎么用文字驱动 AI。<strong>工程力</strong> —— 你对平台杠杆的使用（Skill / MCP / Subagent / CLAUDE.md / Plan 模式）。<strong>成效</strong> —— 实际产出（效率、验证、收尾）。"><strong>Communication</strong> — how clearly you direct AI. <strong>Engineering</strong> — your platform leverage (Skill / MCP / Subagent / CLAUDE.md / Plan mode). <strong>Outcome</strong> — what actually gets shipped (efficiency, verification, clean closure).</p>
+      </div>
+      <div class="ncard">
+        <div class="ncard-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><circle cx="12" cy="8" r="0.5" fill="currentColor"/></svg>
+        </div>
+        <h3 data-en="AI diagnosis layer" data-zh="AI 诊断层">AI diagnosis layer</h3>
+        <p data-en="Free-form collaboration profile + core diagnosis (strength + bottleneck) + cross-dimension reading. This is the part users find most valuable." data-zh="自由格式协作画像 + 核心诊断（优势 + 瓶颈）+ 维度交叉解读。这是用户最看重的部分。">Free-form collaboration profile + core diagnosis (strength + bottleneck) + cross-dimension reading. This is the part users find most valuable.</p>
+      </div>
+      <div class="ncard">
+        <div class="ncard-icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        </div>
+        <h3 data-en="Professional, readable dashboard" data-zh="专业可读的 Dashboard">Professional, readable dashboard</h3>
+        <p data-en="Single-file HTML dashboard built for readability — scores, diagnosis, and pastable suggestions in one place, easy to scan and easy to share." data-zh="单文件 HTML dashboard，专为可读性设计 —— 分数、诊断、可粘贴建议集中在一处，易扫易分享。">Single-file HTML dashboard built for readability — scores, diagnosis, and pastable suggestions in one place, easy to scan and easy to share.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 9 Dimensions in 3 Categories ═══ -->
+  <section>
+    <div class="stitle" data-en="9 Dimensions × 3 Categories" data-zh="九维三类">9 Dimensions × 3 Categories</div>
+    <div class="sheading">
+      <h2 data-en="Measured, not guessed" data-zh="每一分都有据可查">Measured, not guessed</h2>
+      <p data-en="Every score traces back to specific signals in your session history. No black box, no vibes." data-zh="所有评分来自你会话历史中的真实信号 —— 不是 AI 的"感觉"。">Every score traces back to specific signals in your session history. No black box, no vibes.</p>
+    </div>
+    <div class="cats-grid">
+      <!-- Communication -->
+      <div class="cat-card" data-c="comm">
+        <div class="cat-head">
+          <div class="cat-name" data-en="Communication" data-zh="沟通力">Communication</div>
+          <div class="cat-count">3 DIMS</div>
+        </div>
+        <div class="cat-desc" data-en="How clearly you direct AI through text." data-zh="你怎么用文字驱动 AI。">How clearly you direct AI through text.</div>
+        <div class="cat-dims">
+          <div class="cat-dim">
+            <div class="cat-dim-name" data-en="Lock-On" data-zh="瞄准力">Lock-On</div>
+            <div class="cat-dim-zh" data-en="Intent Clarity" data-zh="Lock-On">Intent Clarity</div>
+            <div class="cat-dim-desc" data-en="Goals, constraints, expected outcomes" data-zh="目标、约束、期望结果">Goals, constraints, expected outcomes</div>
+          </div>
+          <div class="cat-dim">
+            <div class="cat-dim-name" data-en="Scene Setting" data-zh="画面感">Scene Setting</div>
+            <div class="cat-dim-zh" data-en="Context Quality" data-zh="Scene Setting">Context Quality</div>
+            <div class="cat-dim-desc" data-en="Tech stack, file paths, project structure upfront" data-zh="技术栈、文件路径、项目结构铺设">Tech stack, file paths, project structure upfront</div>
+          </div>
+          <div class="cat-dim">
+            <div class="cat-dim-name" data-en="Steering" data-zh="导航力">Steering</div>
+            <div class="cat-dim-zh" data-en="Course Correction" data-zh="Steering">Course Correction</div>
+            <div class="cat-dim-desc" data-en="Precise corrections with reasoning, not 'that's wrong'" data-zh="带原因的精准纠正，不只是"不对，重来"">Precise corrections with reasoning, not "that's wrong"</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Engineering (NEW) -->
+      <div class="cat-card" data-c="eng">
+        <div class="cat-head">
+          <div class="cat-name" data-en="Engineering" data-zh="工程力">Engineering</div>
+          <div class="cat-count" data-en="3 DIMS · NEW" data-zh="3 维 · 新">3 DIMS · NEW</div>
+        </div>
+        <div class="cat-desc" data-en="How well you leverage Claude Code as a platform." data-zh="你把 Claude Code 平台用到几成。">How well you leverage Claude Code as a platform.</div>
+        <div class="cat-dims">
+          <div class="cat-dim">
+            <div class="cat-dim-name" data-en="Toolcraft" data-zh="工具力">Toolcraft</div>
+            <div class="cat-dim-zh" data-en="Tool Fluency" data-zh="Toolcraft">Tool Fluency</div>
+            <div class="cat-dim-desc" data-en="Skill / MCP / Subagent / Plan / custom commands usage" data-zh="Skill / MCP / Subagent / Plan / 自定义命令使用">Skill / MCP / Subagent / Plan / custom commands usage</div>
+          </div>
+          <div class="cat-dim">
+            <div class="cat-dim-name" data-en="Architecture" data-zh="架构力">Architecture</div>
+            <div class="cat-dim-zh" data-en="Setup Quality" data-zh="Architecture">Setup Quality</div>
+            <div class="cat-dim-desc" data-en="CLAUDE.md / Memory / Agents / Settings setup" data-zh="CLAUDE.md / Memory / Agents / Settings 设置">CLAUDE.md / Memory / Agents / Settings setup</div>
+          </div>
+          <div class="cat-dim">
+            <div class="cat-dim-name" data-en="Tempo" data-zh="节奏感">Tempo</div>
+            <div class="cat-dim-zh" data-en="Session Flow" data-zh="Tempo">Session Flow</div>
+            <div class="cat-dim-desc" data-en="Milestones, summaries, focused scope per turn" data-zh="里程碑、总结、单轮合理范围">Milestones, summaries, focused scope per turn</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Outcome (NEW) -->
+      <div class="cat-card" data-c="out">
+        <div class="cat-head">
+          <div class="cat-name" data-en="Outcome" data-zh="成效">Outcome</div>
+          <div class="cat-count" data-en="3 DIMS · NEW" data-zh="3 维 · 新">3 DIMS · NEW</div>
+        </div>
+        <div class="cat-desc" data-en="What actually gets shipped." data-zh="实际产出的质量。">What actually gets shipped.</div>
+        <div class="cat-dims">
+          <div class="cat-dim">
+            <div class="cat-dim-name" data-en="Efficiency" data-zh="效率">Efficiency</div>
+            <div class="cat-dim-zh" data-en="Work Density" data-zh="Efficiency">Work Density</div>
+            <div class="cat-dim-desc" data-en="Edits / tools / distinct files per message" data-zh="每条消息的编辑数、工具调用数、覆盖文件数">Edits / tools / distinct files per message</div>
+          </div>
+          <div class="cat-dim">
+            <div class="cat-dim-name" data-en="Proof Check" data-zh="鉴定术">Proof Check</div>
+            <div class="cat-dim-zh" data-en="Verification" data-zh="Proof Check">Verification</div>
+            <div class="cat-dim-desc" data-en="Tests, reviews, no blind 'looks good' accepts" data-zh="测试、审查、不再"看起来不错"盲接受">Tests, reviews, no blind "looks good" accepts</div>
+          </div>
+          <div class="cat-dim">
+            <div class="cat-dim-name" data-en="Completion" data-zh="收尾度">Completion</div>
+            <div class="cat-dim-zh" data-en="Clean Closure" data-zh="Completion">Clean Closure</div>
+            <div class="cat-dim-desc" data-en="Sessions close cleanly, no abandoned retries" data-zh="干净收尾，没有放弃的 retry">Sessions close cleanly, no abandoned retries</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ AI Diagnosis ═══ -->
+  <section>
+    <div class="stitle" data-en="The Core Value" data-zh="核心价值">The Core Value</div>
+    <div class="sheading">
+      <h2 data-en="AI writes the diagnosis" data-zh="AI 写诊断">AI writes the diagnosis</h2>
+      <p data-en="Scores tell you what. Diagnosis tells you why and what to do next. Independent of scoring, evidence-grounded, no personality archetypes." data-zh="分数告诉你是什么。诊断告诉你为什么、下一步怎么做。独立于评分、有证据、不套人格档案。">Scores tell you what. Diagnosis tells you why and what to do next. Independent of scoring, evidence-grounded, no personality archetypes.</p>
+    </div>
+    <div class="diag-grid">
+      <div class="diag-card">
+        <div class="diag-label"><span class="label-dot"></span><span data-en="CORE DIAGNOSIS" data-zh="核心诊断">CORE DIAGNOSIS</span></div>
+        <div class="diag-quote" data-en='"<strong>Strength</strong>: Your Efficiency + Completion combo is top-tier — work actually ships, sessions close cleanly. <strong>Bottleneck</strong>: Across 8 sessions you almost never asked AI to explain its plan before executing."' data-zh='"<strong>强项</strong>：Efficiency + Completion 组合顶级 —— 真东西在出来，会话都干净收尾。<strong>瓶颈</strong>：8 个会话里你几乎没让 AI 先讲一下思路。"'>"<strong>Strength</strong>: Your Efficiency + Completion combo is top-tier — work actually ships, sessions close cleanly. <strong>Bottleneck</strong>: Across 8 sessions you almost never asked AI to explain its plan before executing."</div>
+      </div>
+      <div class="diag-card">
+        <div class="diag-label"><span class="label-dot"></span><span data-en="PATTERN READING" data-zh="模式解读">PATTERN READING</span></div>
+        <div class="diag-quote" data-en='"High Lock-On + low Proof Check = you trust AI''s execution but not its judgment. Fine for tight, well-scoped work; risky when complexity climbs."' data-zh='"高 Lock-On + 低 Proof Check = 你信任 AI 的执行，但不信任它的判断。范围清晰的小任务里没问题；复杂度一上来就有风险。"'>"High Lock-On + low Proof Check = you trust AI's execution but not its judgment. Fine for tight, well-scoped work; risky when complexity climbs."</div>
+      </div>
+      <div class="diag-card wide">
+        <div class="diag-label"><span class="label-dot"></span><span data-en="PASTABLE PROMPT REWRITE" data-zh="可粘贴的 Prompt 改写">PASTABLE PROMPT REWRITE</span></div>
+        <div class="diag-quote" style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-style:normal;font-size:13px;background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:8px;padding:12px 14px;" data-en='"Before you write any code, walk me through what could go wrong with this change and how you''d test it."' data-zh='"在写代码前，先告诉我这次改动可能出哪些问题，你打算怎么测。"'>"Before you write any code, walk me through what could go wrong with this change and how you'd test it."</div>
+        <div class="diag-meta" data-en="Every improvement suggestion ships with a concrete prompt you can copy into your next session, plus expected score impact." data-zh="每条改进建议都带一个可粘贴到下次会话的具体 prompt，外加预期分数变化。">Every improvement suggestion ships with a concrete prompt you can copy into your next session, plus expected score impact.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Project Profile (Fairness Pitch) ═══ -->
+  <section>
+    <div class="stitle" data-en="Fairness" data-zh="公允性">Fairness</div>
+    <div class="sheading">
+      <h2 data-en="A 3-message bugfix is not a 50-session build" data-zh="3 条消息的 bug 修复不等于 50 个会话的大项目">A 3-message bugfix is not a 50-session build</h2>
+      <p data-en="Every project is auto-classified into one of 4 profiles, each with its own dimension weights and N/A rules. Small projects no longer get unfairly penalized." data-zh="每个项目自动归入 4 种画像之一，各有自己的权重和 N/A 规则。小项目不再被无理由打压。">Every project is auto-classified into one of 4 profiles, each with its own dimension weights and N/A rules. Small projects no longer get unfairly penalized.</p>
+    </div>
+    <div class="profiles">
+      <div class="pf"><span class="pf-tag">A</span><span data-en="<strong>One-shot</strong> · ≤ 2 sessions, ≤ 15 msgs" data-zh="<strong>一次性</strong> · ≤ 2 会话、≤ 15 条消息"><strong>One-shot</strong> · ≤ 2 sessions, ≤ 15 msgs</span></div>
+      <div class="pf"><span class="pf-tag">B</span><span data-en="<strong>Feature build</strong> · 3-20 sessions, balanced edit ratio" data-zh="<strong>功能开发</strong> · 3-20 会话、编辑比例正常"><strong>Feature build</strong> · 3-20 sessions, balanced edit ratio</span></div>
+      <div class="pf"><span class="pf-tag">C</span><span data-en="<strong>Long-running</strong> · 20+ sessions or > 7 days" data-zh="<strong>长期项目</strong> · 20+ 会话或跨 > 7 天"><strong>Long-running</strong> · 20+ sessions or > 7 days</span></div>
+      <div class="pf"><span class="pf-tag">D</span><span data-en="<strong>Learning</strong> · Q&A-heavy, few edits" data-zh="<strong>学习探索</strong> · 问答为主、改动少"><strong>Learning</strong> · Q&A-heavy, few edits</span></div>
+    </div>
+    <div class="fairness-quote" data-en="<strong>Density beats volume.</strong> A 5-message project with high signal density and 3 file edits gets <strong>high</strong> confidence and full marks for Efficiency. Confidence scaling rewards signal-rich sessions, not just session count." data-zh="<strong>密度大于体量。</strong>5 条消息但信号密集、改了 3 个文件的项目获得 <strong>high</strong> confidence，Efficiency 满分。confidence 缩放奖励信号丰富的会话，不只看数量。"><strong>Density beats volume.</strong> A 5-message project with high signal density and 3 file edits gets <strong>high</strong> confidence and full marks for Efficiency. Confidence scaling rewards signal-rich sessions, not just session count.</div>
+  </section>
+
+  <!-- ═══ Get Started ═══ -->
+  <section>
+    <div class="stitle" data-en="Get Started" data-zh="马上试试">Get Started</div>
+    <div class="sheading">
+      <h2 data-en="Three steps to your dashboard" data-zh="三步看到你的 dashboard">Three steps to your dashboard</h2>
+    </div>
+    <div class="steps">
+      <div class="scard"><div class="scard-num">1</div><h3 data-en="Install" data-zh="安装">Install</h3><p data-en="Add the marketplace" data-zh="添加 marketplace">Add the marketplace</p><code>/plugin marketplace add</code></div>
+      <div class="scard"><div class="scard-num">2</div><h3 data-en="Run" data-zh="运行">Run</h3><p data-en="From your project directory" data-zh="在你的项目目录里">From your project directory</p><code>/claude-radar</code></div>
+      <div class="scard"><div class="scard-num">3</div><h3 data-en="Dashboard" data-zh="Dashboard">Dashboard</h3><p data-en="Opens automatically in browser" data-zh="自动在浏览器打开">Opens automatically in browser</p><code data-en="single-file HTML" data-zh="单文件 HTML">single-file HTML</code></div>
+    </div>
+  </section>
+
+  <!-- ═══ Privacy ═══ -->
+  <section>
+    <div class="sheading">
+      <h2 data-en="100% on your machine" data-zh="你的数据只在你电脑上">100% on your machine</h2>
+      <p data-en="Your session data never leaves your computer. Ever." data-zh="对话记录不上传、不外传、不经过任何服务器。">Your session data never leaves your computer. Ever.</p>
+    </div>
+    <div class="pills">
+      <div class="pill"><span class="dot"></span><span data-en="No cloud" data-zh="不上云">No cloud</span></div>
+      <div class="pill"><span class="dot"></span><span data-en="No API key" data-zh="不要密钥">No API key</span></div>
+      <div class="pill"><span class="dot"></span><span data-en="No telemetry" data-zh="不采集">No telemetry</span></div>
+      <div class="pill"><span class="dot"></span><span data-en="No tracking" data-zh="不追踪">No tracking</span></div>
+      <div class="pill"><span class="dot"></span>~250 KB</div>
+    </div>
+  </section>
+
+  <!-- ═══ Install Card ═══ -->
+  <section>
+    <div class="icard">
+      <h2 style="font-size:22px;font-weight:700;letter-spacing:-0.5px;margin:0 0 8px" data-en="Install" data-zh="安装">Install</h2>
+      <pre>/plugin marketplace add LeifDiao/claude-radar
+/plugin install claude-radar@claude-radar-marketplace
+/claude-radar</pre>
+      <p class="hint" data-en="Or clone the repo and pass <code style='padding:1px 6px;background:var(--bg-0);border-radius:4px;color:var(--accent-2);'>--plugin-dir</code> to claude." data-zh="或克隆仓库，通过 <code style='padding:1px 6px;background:var(--bg-0);border-radius:4px;color:var(--accent-2);'>--plugin-dir</code> 启动 claude。">Or clone the repo and pass <code style="padding:1px 6px;background:var(--bg-0);border-radius:4px;color:var(--accent-2);">--plugin-dir</code> to claude.</p>
+    </div>
+  </section>
+
+  <footer>
+    <div>
+      <a href="https://github.com/LeifDiao/claude-radar">GitHub</a>
+      <a href="https://github.com/LeifDiao/claude-radar/blob/main/docs/METHODOLOGY.md" id="footM" data-en="Methodology" data-zh="方法论">Methodology</a>
+      <a href="https://github.com/LeifDiao/claude-radar/blob/main/CHANGELOG.md" data-en="Changelog" data-zh="更新日志">Changelog</a>
+    </div>
+    <div style="margin-top:14px;color:var(--text-5);font-style:italic;font-size:12px;" data-en="Built for people who care about the quality of AI collaboration." data-zh="为关心 AI 协作质量的人而做。">Built for people who care about the quality of AI collaboration.</div>
+  </footer>
+</div>
+
+<script>
+(function(){
+  const isZh = /^zh/i.test(navigator.language || '');
+  let lang = isZh ? 'zh' : 'en';
+
+  function apply() {
+    document.querySelectorAll('[data-en]').forEach(el => {
+      const v = el.dataset[lang] || el.dataset.en;
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = v;
+      else el.innerHTML = v;
+    });
+    const base = 'https://github.com/LeifDiao/claude-radar/blob/main/docs/';
+    const f = lang === 'zh' ? 'METHODOLOGY_zh.md' : 'METHODOLOGY.md';
+    ['navM', 'ctaM', 'footM'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.href) el.href = base + f;
+    });
+    document.getElementById('langToggle').textContent = lang === 'zh' ? 'EN' : '中文';
+    document.documentElement.lang = lang;
+  }
+  document.getElementById('langToggle').addEventListener('click', () => {
+    lang = lang === 'zh' ? 'en' : 'zh';
+    apply();
+  });
+  apply();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,397 @@
+{
+  "schemaVersion": "2.0",
+
+  "categories": {
+    "communication": {
+      "name": {"en": "Communication", "zh": "沟通力"},
+      "description": {
+        "en": "How clearly you direct AI through text — clarity, context, and course-correction.",
+        "zh": "你怎么用文字驱动 AI — 清晰度、上下文、纠偏能力。"
+      },
+      "dimensionIds": ["intent", "context", "feedback"]
+    },
+    "engineering": {
+      "name": {"en": "Engineering", "zh": "工程力"},
+      "description": {
+        "en": "How well you leverage Claude Code's platform — skills, MCPs, subagents, persistent setup.",
+        "zh": "你把 Claude Code 这个平台用到几成 — skill、MCP、subagent、长期化设置。"
+      },
+      "dimensionIds": ["toolcraft", "architecture", "tempo"]
+    },
+    "outcome": {
+      "name": {"en": "Outcome", "zh": "成效"},
+      "description": {
+        "en": "What actually gets shipped — efficiency, verification, and clean closure.",
+        "zh": "实际产出的质量 — 效率、验证、收尾干净度。"
+      },
+      "dimensionIds": ["efficiency", "verification", "completion"]
+    }
+  },
+
+  "dimensionOrder": [
+    "intent", "context", "feedback",
+    "toolcraft", "architecture", "tempo",
+    "efficiency", "verification", "completion"
+  ],
+
+  "dimensions": {
+    "intent": {
+      "category": "communication",
+      "name": {"en": "Lock-On", "zh": "瞄准力"},
+      "shortName": {"en": "Lock-On", "zh": "瞄准"},
+      "description": {
+        "en": "Can you hit the bullseye in one shot — clear goals, constraints, and expected outcomes.",
+        "zh": "你能不能一句话就命中靶心 — 目标明确、约束清晰、期望具体。"
+      },
+      "primaryPosition": "directing",
+      "signals": [
+        "directing.ratios.hasExpectedBehavior",
+        "directing.ratios.hasConstraint",
+        "directing.ratios.isVague",
+        "directing.ratios.hasIdentifier"
+      ],
+      "baselineFormula": "50 + (directing.ratios.hasExpectedBehavior - 0.3) * 80 + (directing.ratios.hasConstraint - 0.2) * 60 - (directing.ratios.isVague - 0.15) * 100 + (directing.ratios.hasIdentifier - 0.2) * 30, clamped [0, 100]",
+      "adjustmentGuide": {
+        "upward": "keyMessages show terse but surgically precise instructions (filePath + identifier + action in < 100 chars) — silent expert precision, not low intent.",
+        "downward": "keyMessages show verbose messages that still lack clear deliverables — length without clarity."
+      }
+    },
+    "context": {
+      "category": "communication",
+      "name": {"en": "Scene Setting", "zh": "画面感"},
+      "shortName": {"en": "Scene", "zh": "画面"},
+      "description": {
+        "en": "Do you set the stage for AI — tech stack, project structure, business context.",
+        "zh": "你给 AI 画的蓝图够不够清楚 — 技术栈、项目背景、业务上下文。"
+      },
+      "primaryPosition": "opening",
+      "signals": [
+        "opening.ratios.hasFilePath",
+        "opening.ratios.hasTechStack",
+        "opening.ratios.hasError",
+        "firstMessage.avgLength",
+        "firstMessage.sessionsWithTechStack",
+        "firstMessage.sessionsWithFilePath"
+      ],
+      "baselineFormula": "50 + (opening.ratios.hasFilePath - 0.3) * 60 + (opening.ratios.hasTechStack - 0.3) * 50 + clamp((firstMessage.avgLength - 100) / 300, -0.5, 0.5) * 30 + (opening.ratios.hasError - 0.1) * 40, clamped [0, 100]",
+      "adjustmentGuide": {
+        "upward": "First messages consistently provide project structure + tech stack even without triggering keyword matches (e.g. pasting file trees, config snippets).",
+        "downward": "Opening messages are long but generic — length without project-specific information."
+      }
+    },
+    "feedback": {
+      "category": "communication",
+      "name": {"en": "Steering", "zh": "导航力"},
+      "shortName": {"en": "Steer", "zh": "导航"},
+      "description": {
+        "en": "When AI goes off-track, can you steer it back — explain why, pinpoint issues, show examples.",
+        "zh": "AI 跑偏时你能不能精准拉回来 — 说清原因、定位问题、给出正例。"
+      },
+      "primaryPosition": "correcting",
+      "signals": [
+        "correcting.ratios.hasReasoning",
+        "correcting.ratios.hasFilePath",
+        "correcting.ratios.hasIdentifier",
+        "patterns.retryLoops",
+        "patterns.noReplyToQuestion"
+      ],
+      "baselineFormula": "50 + (correcting.ratios.hasReasoning - 0.2) * 80 + (correcting.ratios.hasFilePath - 0.2) * 40 + (correcting.ratios.hasIdentifier - 0.2) * 40 - clamp(patterns.retryLoops / max(stats.validSessions, 1), 0, 1) * 40 - clamp(patterns.noReplyToQuestion / max(stats.humanMessages, 1), 0, 0.3) * 100, clamped [0, 100]",
+      "adjustmentGuide": {
+        "upward": "sampleExchanges show user gives precise corrections with code snippets even without reasoning keywords (shows, doesn't tell).",
+        "downward": "Corrections are specific but never explain why — AI can't learn from the feedback."
+      }
+    },
+
+    "toolcraft": {
+      "category": "engineering",
+      "name": {"en": "Toolcraft", "zh": "工具力"},
+      "shortName": {"en": "Tools", "zh": "工具"},
+      "description": {
+        "en": "Do you reach beyond Edit/Bash/Read when the project benefits from it — Skills, MCP, Subagents, Plan mode, custom commands. Not using advanced tools is fine; using them poorly is what hurts.",
+        "zh": "需要时你会不会用 Edit/Bash/Read 之外的工具 — Skill、MCP、Subagent、Plan 模式、自定义命令。不用高级工具不扣分；用了但用不好才扣分。"
+      },
+      "primaryPosition": "global",
+      "signals": [
+        "toolcraftSummary.skillsUsed",
+        "toolcraftSummary.mcpServers",
+        "toolcraftSummary.subagentCalls",
+        "toolcraftSummary.planModeEntries",
+        "toolcraftSummary.customCommands",
+        "toolUsage.byCategory.todo"
+      ],
+      "baselineFormula": "60 + min(toolcraftSummary.skillsUsed.length, 5) * 5 + min(toolcraftSummary.mcpServers.length, 4) * 4 + clamp(toolcraftSummary.subagentCalls / max(stats.validSessions, 1), 0, 2) * 6 + (toolcraftSummary.planModeEntries > 0 ? 5 : 0) + min(toolcraftSummary.customCommands.length, 3) * 3 + clamp(toolUsage.byCategory.todo / max(stats.humanMessages, 1), 0, 0.3) * 20, clamped [0, 100]",
+      "scoringPhilosophy": "Baseline 60 (B) assumes basic competence with Edit/Bash/Read — that is honest, not punitive. Advanced tools (Skill/MCP/Subagent/Plan/CustomCmd) add bonuses on top. Absence of advanced tool use is NOT a penalty.",
+      "adjustmentGuide": {
+        "upward": "User chains advanced tools effectively (skill → subagent → custom command) AND the chained workflow corresponds to clean completion (no retry loops triggered afterward). Plan mode entries that led to substantive multi-file edits. Subagent usage with non-trivial result counts.",
+        "downward": "Advanced tools invoked but workflow stalls afterward — e.g. subagents that triggered retry loops, plan mode entered then abandoned. Custom commands invoked but no follow-through work. This is 'tool theater' — using fancy tools without leverage."
+      }
+    },
+    "architecture": {
+      "category": "engineering",
+      "name": {"en": "Architecture", "zh": "架构力"},
+      "shortName": {"en": "Arch", "zh": "架构"},
+      "description": {
+        "en": "Have you set the project up for repeatable AI collaboration — CLAUDE.md, memory, custom agents, settings.",
+        "zh": "你的项目是否为可重复的 AI 协作做了铺垫 — CLAUDE.md、memory、自定义 agent、settings。"
+      },
+      "primaryPosition": "global",
+      "signals": [
+        "projectAssets.hasClaudeMd",
+        "projectAssets.claudeMdSize",
+        "projectAssets.hasMemoryDir",
+        "projectAssets.memoryFileCount",
+        "projectAssets.hasAgentsDir",
+        "projectAssets.agentCount",
+        "projectAssets.hasCommandsDir",
+        "projectAssets.commandCount",
+        "projectAssets.hasSettingsJson"
+      ],
+      "baselineFormula": "40 + (projectAssets.hasClaudeMd ? 20 : 0) + (projectAssets.claudeMdSize > 500 ? 10 : 0) + (projectAssets.hasMemoryDir ? 8 : 0) + min(projectAssets.memoryFileCount, 5) * 2 + (projectAssets.hasAgentsDir ? 6 : 0) + min(projectAssets.agentCount, 4) * 2 + (projectAssets.hasCommandsDir ? 5 : 0) + min(projectAssets.commandCount, 3) * 2 + (projectAssets.hasSettingsJson ? 5 : 0), clamped [0, 100]",
+      "applicabilityRule": "If projectAssets.cwdResolved is false, mark this dimension as N/A — filesystem inspection not possible.",
+      "adjustmentGuide": {
+        "upward": "CLAUDE.md is genuinely informative (large, project-specific) — not just a stub. Memory entries reflect real ongoing context.",
+        "downward": "CLAUDE.md exists but is a stub (< 500 bytes) or generic — counted only at the baseline level."
+      }
+    },
+    "tempo": {
+      "category": "engineering",
+      "name": {"en": "Tempo", "zh": "节奏感"},
+      "shortName": {"en": "Tempo", "zh": "节奏"},
+      "description": {
+        "en": "Do you control the conversation tempo — milestones, summaries, topic focus, sensible scope per turn.",
+        "zh": "你掌控对话节奏的能力 — 设里程碑、控话题、做总结、单轮范围合理。"
+      },
+      "primaryPosition": "global",
+      "signals": [
+        "labelRatios.summary",
+        "labelRatios.milestone",
+        "labelRatios.progressive",
+        "patterns.topicDrifts",
+        "patterns.demandOverloads",
+        "stats.validSessions"
+      ],
+      "baselineFormula": "50 + (labelRatios.summary - 0.05) * 100 + (labelRatios.milestone - 0.05) * 80 - clamp(patterns.topicDrifts / max(stats.validSessions, 1), 0, 5) * 8 - clamp(patterns.demandOverloads / max(stats.humanMessages, 1), 0, 0.3) * 100 + (labelRatios.progressive - 0.1) * 60 + clamp(stats.validSessions / 20, 0, 1) * 8, clamped [0, 100]",
+      "adjustmentGuide": {
+        "upward": "sessionFlows show clean arcs (setup → build → verify → close) even without explicit 'summary' or 'milestone' keywords.",
+        "downward": "User writes recaps but sessions still sprawl — summaries without actual convergence."
+      }
+    },
+
+    "efficiency": {
+      "category": "outcome",
+      "name": {"en": "Efficiency", "zh": "效率"},
+      "shortName": {"en": "Effic", "zh": "效率"},
+      "description": {
+        "en": "How much real work per message — file edits, tool use, distinct files touched.",
+        "zh": "单位消息产生的真实工作量 — 文件编辑、工具调用、覆盖文件数。"
+      },
+      "primaryPosition": "global",
+      "signals": [
+        "outcomeTotals.editsPerHumanMsg",
+        "outcomeTotals.toolsPerHumanMsg",
+        "outcomeTotals.filesPerHumanMsg",
+        "patterns.retryLoops"
+      ],
+      "baselineFormula": "50 + clamp(outcomeTotals.toolsPerHumanMsg / 3, 0, 1) * 25 + clamp(outcomeTotals.editsPerHumanMsg / 1.5, 0, 1) * 20 + clamp(outcomeTotals.filesPerHumanMsg / 0.5, 0, 1) * 15 - clamp(patterns.retryLoops / max(stats.validSessions, 1), 0, 1) * 20, clamped [0, 100]",
+      "applicabilityRule": "If projectProfile.type is 'learning', this dimension is N/A — Q&A projects intentionally have low edit ratios.",
+      "adjustmentGuide": {
+        "upward": "sessionOutcomes show a session that closed a bug in 1-3 messages with multiple file edits — silent expert efficiency.",
+        "downward": "High tool use but low distinct-files-touched — busywork pattern, not real progress."
+      }
+    },
+    "verification": {
+      "category": "outcome",
+      "name": {"en": "Proof Check", "zh": "鉴定术"},
+      "shortName": {"en": "Proof", "zh": "鉴定"},
+      "description": {
+        "en": "Do you proof-check AI output — ask for tests, review the approach, validate assumptions.",
+        "zh": "你能不能鉴别 AI 输出的好坏 — 要求测试、审查代码、验证思路。"
+      },
+      "primaryPosition": "confirming + global",
+      "signals": [
+        "patterns.blindAccepts",
+        "labelRatios.requestTest",
+        "labelRatios.thinkFirst",
+        "labelRatios.proactiveReview",
+        "confirming.ratios.proactiveReview"
+      ],
+      "baselineFormula": "50 - (patterns.blindAccepts / max(stats.humanMessages, 1)) * 200 + (labelRatios.requestTest - 0.05) * 120 + (labelRatios.thinkFirst - 0.05) * 100 + (labelRatios.proactiveReview - 0.1) * 80, clamped [0, 100]",
+      "adjustmentGuide": {
+        "upward": "User runs their own tests outside the conversation (pastes results back), or reviews AI diffs before accepting — invisible verification.",
+        "downward": "High proactiveReview ratio but always accepts anyway after AI answers — performative checking."
+      }
+    },
+    "completion": {
+      "category": "outcome",
+      "name": {"en": "Completion", "zh": "收尾度"},
+      "shortName": {"en": "Done", "zh": "收尾"},
+      "description": {
+        "en": "Do sessions actually close cleanly — explicit completion signals, no abandoned retries, sessions don't trail off.",
+        "zh": "会话是否干净收尾 — 有明确完成信号、没有放弃的 retry、不烂尾。"
+      },
+      "primaryPosition": "global",
+      "signals": [
+        "outcomeTotals.cleanEndRatio",
+        "outcomeTotals.sessionsWithCompletionSignal",
+        "patterns.retryLoops",
+        "labelRatios.hasCompletion"
+      ],
+      "baselineFormula": "50 + (outcomeTotals.cleanEndRatio - 0.5) * 60 + (outcomeTotals.sessionsWithCompletionSignal / max(stats.validSessions, 1) - 0.3) * 50 - clamp(patterns.retryLoops / max(stats.validSessions, 1), 0, 1) * 15 + (labelRatios.hasCompletion - 0.05) * 80, clamped [0, 100]",
+      "applicabilityRule": "If projectProfile.type is 'one-shot' or 'learning', this dimension is N/A — closure semantics don't apply.",
+      "adjustmentGuide": {
+        "upward": "sessionOutcomes show consistent completion signals AND no retry loops — work actually shipped.",
+        "downward": "Sessions trail off without resolution (user disappears mid-thread, no acknowledgment of final state)."
+      }
+    }
+  },
+
+  "scoring": {
+    "method": "baseline + adjustment",
+    "baselineSource": "deterministic formula from facts.json signals",
+    "adjustmentRange": [-15, 15],
+    "adjustmentRequirement": "Must cite specific keyMessages or sampleExchanges evidence in reasoning. No adjustment without evidence.",
+    "confidenceScaling": {
+      "low": "All baseline scores shrink toward 50 (score = 50 + (baseline - 50) * 0.75). Show 'limited data' note in report.",
+      "medium": "Mild shrinkage (score = 50 + (baseline - 50) * 0.9).",
+      "high": "No scaling applied."
+    },
+    "naHandling": {
+      "rule": "Per applicabilityRule on each dimension, plus projectProfile.naDimensions. N/A dimensions have score=null, grade=null, applicable=false. Excluded from overall and category averages.",
+      "displayLabel": {"en": "N/A for {profile}", "zh": "{profile} 不适用"}
+    },
+    "categoryScore": "Average of applicable dimensions in the category, rounded.",
+    "overallScore": "Weighted sum of category scores using projectProfile.categoryWeights (sum=1.0), rounded. If a category has all dimensions N/A, redistribute its weight proportionally to other categories.",
+    "overallGradeNote": "Profile is shown alongside the grade so the reader understands what was evaluated. A 'one-shot' project with B grade is not equivalent to a 'feature-build' project with B grade."
+  },
+
+  "grades": [
+    {
+      "letter": "S",
+      "range": [85, 100],
+      "label": {"en": "In The Zone", "zh": "心流共振"},
+      "description": {
+        "en": "You and AI are perfectly in sync — your communication creates seamless flow.",
+        "zh": "你和 AI 已经完美同步，沟通高效且精准。"
+      },
+      "color": "#22c55e"
+    },
+    {
+      "letter": "A",
+      "range": [70, 84],
+      "label": {"en": "Synced Up", "zh": "默契搭档"},
+      "description": {
+        "en": "You've built strong AI collaboration instincts — smooth and efficient most of the time.",
+        "zh": "你有很好的 AI 协作直觉，大部分时候配合流畅。"
+      },
+      "color": "#3b82f6"
+    },
+    {
+      "letter": "B",
+      "range": [55, 69],
+      "label": {"en": "Finding Groove", "zh": "稳步探索"},
+      "description": {
+        "en": "You're finding your rhythm — clear room to grow with specific improvements.",
+        "zh": "你正在找到属于自己的协作风格，进步空间明确。"
+      },
+      "color": "#eab308"
+    },
+    {
+      "letter": "C",
+      "range": [40, 54],
+      "label": {"en": "Freestyling", "zh": "随性对话"},
+      "description": {
+        "en": "Your style is freestyle and intuitive — a bit of structure would go a long way.",
+        "zh": "你的风格偏自由随性，加一些结构会让效果翻倍。"
+      },
+      "color": "#f97316"
+    },
+    {
+      "letter": "D",
+      "range": [0, 39],
+      "label": {"en": "Day One", "zh": "初识旅程"},
+      "description": {
+        "en": "Everyone starts here — small changes lead to big improvements.",
+        "zh": "每个人都从这里开始，小小的改变就能带来大的提升。"
+      },
+      "color": "#ef4444"
+    }
+  ],
+
+  "profiles": {
+    "one-shot": {
+      "label": {"en": "One-shot task", "zh": "一次性任务"},
+      "naDimensions": ["architecture", "tempo", "completion"],
+      "categoryWeights": {"communication": 0.5, "engineering": 0.1, "outcome": 0.4}
+    },
+    "feature-build": {
+      "label": {"en": "Feature build", "zh": "功能开发"},
+      "naDimensions": [],
+      "categoryWeights": {"communication": 0.34, "engineering": 0.33, "outcome": 0.33}
+    },
+    "long-running": {
+      "label": {"en": "Long-running project", "zh": "长期项目"},
+      "naDimensions": [],
+      "categoryWeights": {"communication": 0.3, "engineering": 0.4, "outcome": 0.3}
+    },
+    "learning": {
+      "label": {"en": "Learning / exploration", "zh": "学习探索"},
+      "naDimensions": ["efficiency", "completion"],
+      "categoryWeights": {"communication": 0.7, "engineering": 0.3, "outcome": 0}
+    }
+  },
+
+  "diagnosis": {
+    "purpose": "Independent of scoring. Provides qualitative interpretation that turns numbers into actionable insight.",
+    "components": [
+      {
+        "id": "collaborationProfile",
+        "description": "A 120-180 word free-form picture of how this user collaborates with AI. Must reference real behavior patterns from facts, not personality archetypes."
+      },
+      {
+        "id": "coreDiagnosis",
+        "description": "One paragraph (60-100 words) naming the single strongest strength and the single most critical bottleneck, with evidence."
+      },
+      {
+        "id": "crossDimensionReading",
+        "description": "1-2 sentences interpreting how the dimension scores combine into a behavior pattern (e.g. 'high Lock-On + low Proof Check = trusts AI execution but not its judgment')."
+      }
+    ],
+    "constraints": [
+      "Every claim must cite evidence from keyMessages, sampleExchanges, sessionFlows, or toolcraftSummary.",
+      "No fortune-teller tone. Describe observable behavior, not personality.",
+      "Bilingual parity (en/zh) — same meaning, not literal translation."
+    ]
+  },
+
+  "suggestions": {
+    "count": "MINIMUM 5, maximum 7. Never fewer than 5, even for high-scoring users.",
+    "priorityMapping": {
+      "D (0-39)": "high (required)",
+      "C (40-54)": "high (required)",
+      "B (55-69)": "medium (usually; upgrade to high if clearly poor)",
+      "A (70-84)": "low (level-up move toward S)",
+      "S (85-100)": "low (refinement to lock in the strength, OR cross-pollinate to weaker dims)"
+    },
+    "highScorerFillSources": [
+      "Within strong dimensions — push from 82 → 90+ with a 'next-level' habit.",
+      "Cross-pollinate — apply a habit working in one dim to a weaker one.",
+      "Platform leverage — suggest Skill/MCP/Subagent moves tied to actual workflow.",
+      "Process habits — recap, milestone, session scoping discipline.",
+      "Risk reduction — even strong scoring may hide brittleness (e.g. all skill in head, none in CLAUDE.md)."
+    ],
+    "required": [
+      "dimensionId",
+      "priority (high/medium/low)",
+      "title (bilingual, < 18 chars)",
+      "body (bilingual, 1-2 sentences, specific)",
+      "evidence (bilingual, 1 sentence quoting/paraphrasing real session content)",
+      "promptRewrite (bilingual, a concrete pastable prompt the user can try next time)",
+      "expectedImpact (bilingual, e.g. '+12 Proof Check')"
+    ],
+    "principles": [
+      "Avoid empty platitudes. Don't say 'verify more' — say 'next time AI gives you code, ask it to explain the reasoning before you run it.'",
+      "Sort: high → medium → low; within priority, by impact scope (largest first).",
+      "Every suggestion (including low-priority level-up moves) must be specific, evidence-grounded, and ship with a usable promptRewrite."
+    ]
+  }
+}

@@ -42,6 +42,37 @@ function deriveDisplayName(slug) {
   return parts[parts.length - 1];
 }
 
+// The slug is lossy (non-ASCII dir names collapse to dashes, so unrelated
+// projects can share a displayName like "radar" or "30"). Recover the real
+// directory basename by peeking at the cwd field in the newest session file.
+function displayNameFromCwd(projectPath, files) {
+  let newest = null, newestM = 0;
+  for (const f of files) {
+    if (!f.endsWith('.jsonl')) continue;
+    try {
+      const m = fs.statSync(path.join(projectPath, f)).mtimeMs;
+      if (m > newestM) { newestM = m; newest = f; }
+    } catch {}
+  }
+  if (!newest) return null;
+  try {
+    const fd = fs.openSync(path.join(projectPath, newest), 'r');
+    const buf = Buffer.alloc(16384);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    fs.closeSync(fd);
+    const chunk = buf.slice(0, n).toString('utf-8');
+    for (const line of chunk.split('\n')) {
+      const m = line.match(/"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (m) {
+        const cwd = JSON.parse('"' + m[1] + '"');
+        const base = path.basename(cwd);
+        if (base) return base;
+      }
+    }
+  } catch {}
+  return null;
+}
+
 // Encode an absolute path into the slug format Claude Code uses for ~/.claude/projects/<slug>.
 // Spaces are replaced with -, all / → -. Note: this is lossy (cannot distinguish - in dir name).
 function encodeCwdToSlug(cwd) {
@@ -58,9 +89,10 @@ for (const entry of entries) {
   const projectPath = path.join(projectsDir, entry.name);
   let sessionCount = 0;
   let lastModified = 0;
+  let files = [];
 
   try {
-    const files = fs.readdirSync(projectPath);
+    files = fs.readdirSync(projectPath);
     for (const file of files) {
       if (!file.endsWith('.jsonl')) continue;
       sessionCount++;
@@ -75,7 +107,7 @@ for (const entry of entries) {
 
   projects.push({
     slug: entry.name,
-    displayName: deriveDisplayName(entry.name),
+    displayName: displayNameFromCwd(projectPath, files) || deriveDisplayName(entry.name),
     path: projectPath,
     sessionCount,
     lastModified: new Date(lastModified).toISOString()

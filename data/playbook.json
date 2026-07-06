@@ -1,0 +1,824 @@
+{
+  "schemaVersion": "1.0",
+  "_doc": "Suggestion playbook. Each move has a structured trigger evaluated deterministically by compute-baselines.mjs against facts.json. Matched moves become candidateMoves; Claude selects 5-7 and personalizes them with real session evidence. Ops: eq/neq/gt/gte/lt/lte/in/notIn/truthy/falsy/lenEq/lenGte/lenLte/includesAny. Combine with {all:[...]}, {any:[...]}. Paths are dotted lookups into facts.json; includesAny matches .name fields in arrays of {name,count}. Template placeholders like {{techStack}} / {{project}} are for Claude to fill from facts when instantiating.",
+
+  "moves": [
+    {
+      "id": "delegate-broad-search",
+      "dimensionId": "toolcraft",
+      "domain": "orchestration",
+      "actionType": "orchestration",
+      "trigger": {"all": [
+        {"path": "toolcraftSummary.subagentCalls", "op": "eq", "value": 0},
+        {"path": "stats.validSessions", "op": "gte", "value": 5},
+        {"path": "toolcraftSummary.byCategory.read", "op": "gte", "value": 50}
+      ]},
+      "title": {"en": "Delegate broad scans", "zh": "把大范围搜索外包"},
+      "insight": {
+        "en": "You make Claude read file after file in your main session — every page read burns your shared context. Subagents scan in their own context and return only conclusions.",
+        "zh": "你让 Claude 在主会话里一个文件一个文件地读 — 每次阅读都在消耗你们共享的上下文。Subagent 在自己的上下文里扫描，只把结论带回来。"
+      },
+      "promptRewrite": {
+        "en": "Use a subagent to scan the whole codebase for every place that touches <topic>, and report back just the file list with one-line summaries — don't read them all in this session.",
+        "zh": "用一个 subagent 扫描整个代码库里所有涉及 <主题> 的地方，只汇报文件清单和一句话摘要 — 不要在当前会话里逐个读。"
+      },
+      "expectedImpact": {"en": "+6-10 Toolcraft; faster sessions, less context burn.", "zh": "+6-10 工具力；会话更快，上下文消耗更低。"}
+    },
+    {
+      "id": "parallelize-independent-work",
+      "dimensionId": "toolcraft",
+      "domain": "orchestration",
+      "actionType": "orchestration",
+      "trigger": {"all": [
+        {"path": "toolcraftSummary.subagentCalls", "op": "gte", "value": 3},
+        {"path": "toolcraftSummary.orchestration.parallelToolBursts", "op": "lte", "value": 2}
+      ]},
+      "title": {"en": "Run agents in parallel", "zh": "让 agent 并行跑"},
+      "insight": {
+        "en": "You already delegate to subagents, but serially — one finishes before the next starts. Independent tasks can launch together and cut wall-clock time to the slowest one.",
+        "zh": "你已经在用 subagent，但都是串行的 — 一个跑完才启动下一个。互不依赖的任务可以同时发出去，总耗时缩到最慢的那一个。"
+      },
+      "promptRewrite": {
+        "en": "These three investigations are independent — launch three subagents in parallel, one per area, and merge their findings when all return.",
+        "zh": "这三个调查互不依赖 — 同时启动三个 subagent，一人一块，全部返回后汇总结论。"
+      },
+      "expectedImpact": {"en": "+4-8 Toolcraft; 2-3x faster on multi-part tasks.", "zh": "+4-8 工具力；多块任务快 2-3 倍。"}
+    },
+    {
+      "id": "try-workflow-fanout",
+      "dimensionId": "toolcraft",
+      "domain": "orchestration",
+      "actionType": "orchestration",
+      "trigger": {"all": [
+        {"path": "toolcraftSummary.orchestration.workflowRuns", "op": "eq", "value": 0},
+        {"path": "toolcraftSummary.subagentCalls", "op": "gte", "value": 10}
+      ]},
+      "title": {"en": "Graduate to workflows", "zh": "升级到 Workflow 编排"},
+      "insight": {
+        "en": "You're a heavy subagent user, which means you're manually doing what a workflow script does deterministically: fan out, verify, synthesize. Ask for a workflow when a task needs many agents with structure.",
+        "zh": "你是 subagent 重度用户 — 这说明你在手动做 Workflow 脚本能确定性完成的事：分发、校验、汇总。当任务需要多个有结构的 agent 时，直接要求用 workflow。"
+      },
+      "promptRewrite": {
+        "en": "This audit is big — use a workflow: fan out one agent per module to find issues, then adversarially verify each finding before reporting.",
+        "zh": "这个审查量很大 — 用一个 workflow：每个模块派一个 agent 找问题，每条发现再用对抗性校验确认后才汇报。"
+      },
+      "expectedImpact": {"en": "+8-12 Toolcraft; findings get verified, not just collected.", "zh": "+8-12 工具力；发现会被校验，而不只是罗列。"}
+    },
+    {
+      "id": "background-long-tasks",
+      "dimensionId": "toolcraft",
+      "domain": "orchestration",
+      "actionType": "orchestration",
+      "trigger": {"all": [
+        {"path": "toolcraftSummary.orchestration.backgroundTasks", "op": "eq", "value": 0},
+        {"path": "toolcraftSummary.byCategory.bash", "op": "gte", "value": 100}
+      ]},
+      "title": {"en": "Background the slow stuff", "zh": "慢命令放后台"},
+      "insight": {
+        "en": "Heavy Bash usage with zero background runs means builds/tests block the whole conversation while they run. Backgrounding lets Claude keep working and pick up results when ready.",
+        "zh": "大量 Bash 调用但从没放过后台 — 意味着构建/测试跑的时候整个对话都在干等。放后台后 Claude 可以继续干活，结果好了再接上。"
+      },
+      "promptRewrite": {
+        "en": "Run the build in the background and keep implementing the next item; check the build result when it finishes.",
+        "zh": "把构建放到后台跑，继续做下一项；构建结束后再回来看结果。"
+      },
+      "expectedImpact": {"en": "+4-6 Toolcraft, +Efficiency; no more dead waiting.", "zh": "+4-6 工具力，效率同步提升；不再干等。"}
+    },
+    {
+      "id": "worktree-for-risky-changes",
+      "dimensionId": "toolcraft",
+      "domain": "orchestration",
+      "actionType": "orchestration",
+      "trigger": {"all": [
+        {"path": "toolcraftSummary.orchestration.worktreeUses", "op": "eq", "value": 0},
+        {"path": "outcomeTotals.distinctFilesTouched", "op": "gte", "value": 20},
+        {"path": "toolcraftSummary.subagentCalls", "op": "gte", "value": 1}
+      ]},
+      "title": {"en": "Isolate risky edits", "zh": "高风险改动用 worktree 隔离"},
+      "insight": {
+        "en": "Your sessions touch many files. When delegating file-mutating work to agents (or trying a risky refactor), a git worktree gives an isolated copy — nothing lands on your branch until you approve.",
+        "zh": "你的会话动的文件很多。把改文件的活交给 agent（或做高风险重构）时，git worktree 提供隔离副本 — 你验收之前什么都不会落到你的分支上。"
+      },
+      "promptRewrite": {
+        "en": "Do this refactor in an isolated worktree; show me the diff summary before merging anything back.",
+        "zh": "这个重构放到独立 worktree 里做；合回来之前先给我看 diff 摘要。"
+      },
+      "expectedImpact": {"en": "+3-5 Toolcraft; risk contained, easy rollback.", "zh": "+3-5 工具力；风险受控，随时可弃。"}
+    },
+    {
+      "id": "plan-mode-first",
+      "dimensionId": "toolcraft",
+      "domain": "orchestration",
+      "actionType": "orchestration",
+      "trigger": {"all": [
+        {"path": "toolcraftSummary.planModeEntries", "op": "eq", "value": 0},
+        {"path": "outcomeTotals.fileEditCount", "op": "gte", "value": 50}
+      ]},
+      "title": {"en": "Plan before big builds", "zh": "大改动先过 Plan 模式"},
+      "insight": {
+        "en": "You ship a lot of edits but never use plan mode. For multi-file changes, approving a plan first catches wrong directions before any code is written — much cheaper than correcting after.",
+        "zh": "你产出大量编辑但从没用过 plan 模式。多文件改动先审一遍计划，能在写任何代码之前拦住方向性错误 — 比事后纠偏便宜得多。"
+      },
+      "promptRewrite": {
+        "en": "Before touching any files: enter plan mode and show me your implementation plan for this feature. I'll approve or adjust it first.",
+        "zh": "先别动文件：进 plan 模式，把这个功能的实施计划列给我，我确认或调整后再开工。"
+      },
+      "expectedImpact": {"en": "+5 Toolcraft, fewer corrections downstream (+Steering).", "zh": "+5 工具力；下游纠偏变少（导航力也受益）。"}
+    },
+
+    {
+      "id": "browser-mcp-for-frontend",
+      "dimensionId": "toolcraft",
+      "domain": "mcp",
+      "actionType": "setup",
+      "trigger": {"all": [
+        {"path": "techStackDetected", "op": "includesAny", "value": ["react", "vue", "next.js", "nextjs", "svelte", "css", "tailwind", "tailwindcss", "vite", "html", "frontend"]},
+        {"path": "toolcraftSummary.mcpServers", "op": "lenEq", "value": 0}
+      ]},
+      "title": {"en": "Let AI see your UI", "zh": "让 AI 亲眼看到页面"},
+      "insight": {
+        "en": "You're building frontend but Claude works blind — it edits styles and components without ever seeing the rendered result. A browser MCP (Claude in Chrome / Playwright) closes the loop: Claude makes a change, looks at the page, and fixes what's off.",
+        "zh": "你在做前端，但 Claude 是闭着眼睛干活的 — 它改样式改组件却从没见过渲染结果。浏览器 MCP（Claude in Chrome / Playwright）能闭环：改完自己打开页面看，不对自己修。"
+      },
+      "asset": {
+        "type": "file",
+        "suggestedPath": ".mcp.json",
+        "template": "{\n  \"mcpServers\": {\n    \"playwright\": {\n      \"command\": \"npx\",\n      \"args\": [\"@playwright/mcp@latest\"]\n    }\n  }\n}\n"
+      },
+      "promptRewrite": {
+        "en": "After you change the styles, open the page with the browser tool, screenshot it, and verify the layout yourself before telling me it's done.",
+        "zh": "改完样式后，用浏览器工具打开页面截图，自己确认布局没问题再告诉我完成了。"
+      },
+      "expectedImpact": {"en": "+8-12 Toolcraft, +Proof Check; kills the 'looks wrong, go again' loop.", "zh": "+8-12 工具力，鉴定术同步提升；消灭'不对，再来一遍'循环。"}
+    },
+    {
+      "id": "persist-mcp-config",
+      "dimensionId": "architecture",
+      "domain": "mcp",
+      "actionType": "setup",
+      "trigger": {"all": [
+        {"path": "toolcraftSummary.mcpServers", "op": "lenGte", "value": 1},
+        {"path": "projectAssets.hasMcpJson", "op": "falsy"},
+        {"path": "projectAssets.cwdResolved", "op": "truthy"}
+      ]},
+      "title": {"en": "Pin MCP to the project", "zh": "把 MCP 配置钉进项目"},
+      "insight": {
+        "en": "You use MCP servers, but they're configured globally or ad hoc — teammates (and future you) don't inherit them. A project-level .mcp.json makes the toolchain part of the repo.",
+        "zh": "你在用 MCP server，但配置是全局或临时的 — 同伴（和未来的你）继承不到。项目级 .mcp.json 让工具链成为仓库的一部分。"
+      },
+      "asset": {
+        "type": "file",
+        "suggestedPath": ".mcp.json",
+        "template": "{\n  \"mcpServers\": {\n    \"{{serverName}}\": {\n      \"command\": \"{{command}}\",\n      \"args\": []\n    }\n  }\n}\n"
+      },
+      "promptRewrite": {
+        "en": "Create a .mcp.json in this project that declares the MCP servers we've been using, so they load automatically for anyone opening this repo.",
+        "zh": "在这个项目里建一个 .mcp.json，把我们一直在用的 MCP server 声明进去，谁打开这个仓库都能自动加载。"
+      },
+      "expectedImpact": {"en": "+8 Architecture; setup survives across sessions and machines.", "zh": "+8 架构力；配置跨会话、跨机器存活。"}
+    },
+    {
+      "id": "db-mcp-for-data-work",
+      "dimensionId": "toolcraft",
+      "domain": "mcp",
+      "actionType": "setup",
+      "trigger": {"all": [
+        {"path": "techStackDetected", "op": "includesAny", "value": ["postgres", "mysql", "sqlite", "supabase", "prisma", "mongodb", "drizzle", "redis"]},
+        {"path": "toolcraftSummary.mcpServers", "op": "lenEq", "value": 0}
+      ]},
+      "title": {"en": "Give AI database eyes", "zh": "给 AI 一双看数据库的眼睛"},
+      "insight": {
+        "en": "Your project talks to a database, but Claude only sees the schema through your descriptions. A database MCP lets it inspect real schema and sample rows — queries and migrations stop being guesswork.",
+        "zh": "你的项目连着数据库，但 Claude 只能靠你转述来理解表结构。数据库 MCP 让它直接看真实 schema 和样例数据 — 写查询和迁移不再靠猜。"
+      },
+      "asset": {
+        "type": "file",
+        "suggestedPath": ".mcp.json",
+        "template": "{\n  \"mcpServers\": {\n    \"postgres\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@modelcontextprotocol/server-postgres\", \"{{connectionString}}\"]\n    }\n  }\n}\n"
+      },
+      "promptRewrite": {
+        "en": "Before writing this migration, inspect the actual table schema through the database MCP and confirm the column types.",
+        "zh": "写这个迁移之前，先通过数据库 MCP 看一下真实表结构，确认字段类型。"
+      },
+      "expectedImpact": {"en": "+6-10 Toolcraft; schema drift bugs disappear.", "zh": "+6-10 工具力；schema 不同步的 bug 直接消失。"}
+    },
+    {
+      "id": "discover-mcp",
+      "dimensionId": "toolcraft",
+      "domain": "mcp",
+      "actionType": "prompt",
+      "trigger": {"all": [
+        {"path": "toolcraftSummary.mcpServers", "op": "lenEq", "value": 0},
+        {"path": "stats.validSessions", "op": "gte", "value": 10},
+        {"path": "techStackDetected", "op": "lenGte", "value": 1}
+      ]},
+      "title": {"en": "Scout MCP for your stack", "zh": "为你的技术栈探一圈 MCP"},
+      "insight": {
+        "en": "Across many sessions you've never connected an MCP server. There's likely one that removes your most repetitive manual step (browser checks, API docs, issue trackers). One scouting prompt tells you what's worth installing.",
+        "zh": "这么多会话你从没接过 MCP server。大概率存在一个能消灭你最重复手工步骤的 MCP（浏览器验证、API 文档、issue 跟踪）。一句侦察 prompt 就能知道值不值得装。"
+      },
+      "promptRewrite": {
+        "en": "Based on what we do in this project, which 2-3 MCP servers would save me the most manual work? Explain what each would automate, then set up the best one.",
+        "zh": "根据我们在这个项目里常做的事，哪 2-3 个 MCP server 最能帮我省手工活？说明各自能自动化什么，然后把最值的那个配置上。"
+      },
+      "expectedImpact": {"en": "+4-16 Toolcraft depending on adoption.", "zh": "+4-16 工具力，取决于最终采纳。"}
+    },
+
+    {
+      "id": "create-claude-md",
+      "dimensionId": "architecture",
+      "domain": "persistence",
+      "actionType": "setup",
+      "trigger": {"all": [
+        {"path": "projectAssets.hasClaudeMd", "op": "falsy"},
+        {"path": "projectAssets.cwdResolved", "op": "truthy"},
+        {"path": "stats.validSessions", "op": "gte", "value": 5}
+      ]},
+      "title": {"en": "Write it down once", "zh": "把口头交代写下来"},
+      "insight": {
+        "en": "Many sessions, no CLAUDE.md — every session you re-explain the same conventions from scratch, and every compaction loses them. CLAUDE.md is loaded automatically: write a rule once, it applies forever.",
+        "zh": "这么多会话却没有 CLAUDE.md — 每个新会话你都在从零重新交代同样的约定，每次 compaction 还会弄丢它们。CLAUDE.md 会自动加载：规则写一次，永久生效。"
+      },
+      "asset": {
+        "type": "file",
+        "suggestedPath": "CLAUDE.md",
+        "template": "# {{project}}\n\n## What this project is\n{{oneLineDescription}}\n\n## Stack\n{{techStack}}\n\n## Commands\n- build: {{buildCommand}}\n- test: {{testCommand}}\n\n## Rules Claude must follow\n- {{rule1}}\n- {{rule2}}\n\n## Things Claude keeps getting wrong\n- {{recurringCorrection}}\n"
+      },
+      "promptRewrite": {
+        "en": "Review what I've had to explain or correct repeatedly in our recent sessions, and write a CLAUDE.md that captures the stack, key commands, and the rules I keep repeating.",
+        "zh": "回顾我们最近会话里我反复解释或纠正过的东西，写一个 CLAUDE.md，把技术栈、常用命令和我总在重复的规则固化进去。"
+      },
+      "expectedImpact": {"en": "+20-30 Architecture; every future session starts pre-briefed.", "zh": "+20-30 架构力；以后每个会话都自带简报开场。"}
+    },
+    {
+      "id": "enrich-claude-md",
+      "dimensionId": "architecture",
+      "domain": "persistence",
+      "actionType": "setup",
+      "trigger": {"all": [
+        {"path": "projectAssets.hasClaudeMd", "op": "truthy"},
+        {"path": "projectAssets.claudeMdSize", "op": "lt", "value": 500}
+      ]},
+      "title": {"en": "Fatten the stub", "zh": "把占位 CLAUDE.md 养起来"},
+      "insight": {
+        "en": "Your CLAUDE.md exists but is under 500 bytes — a stub that tells Claude almost nothing. The highest-value sections are the ones that prevent repeat corrections: commands, conventions, and 'things you keep getting wrong'.",
+        "zh": "你的 CLAUDE.md 存在但不到 500 字节 — 一个几乎什么都没说的占位符。价值最高的章节恰恰是防止重复纠错的那些：命令、约定、'你总是搞错的地方'。"
+      },
+      "asset": {
+        "type": "snippet",
+        "suggestedPath": "CLAUDE.md",
+        "template": "## Commands\n- test: {{testCommand}}\n- build: {{buildCommand}}\n\n## Conventions\n- {{convention1}}\n\n## Known pitfalls (Claude: read this first)\n- {{pitfall1}}\n"
+      },
+      "promptRewrite": {
+        "en": "My CLAUDE.md is a stub. Expand it: add the real build/test commands, our naming conventions, and the three things you'd most want to know before editing this codebase.",
+        "zh": "我的 CLAUDE.md 还是个空壳。扩充它：写上真实的构建/测试命令、我们的命名约定，以及你动这个代码库之前最想知道的三件事。"
+      },
+      "expectedImpact": {"en": "+10 Architecture; corrections stop repeating.", "zh": "+10 架构力；纠错不再重复发生。"}
+    },
+    {
+      "id": "fold-corrections-into-claude-md",
+      "dimensionId": "architecture",
+      "domain": "persistence",
+      "actionType": "prompt",
+      "trigger": {"all": [
+        {"path": "projectAssets.hasClaudeMd", "op": "truthy"},
+        {"path": "signalsByPosition.correcting.messageCount", "op": "gte", "value": 5}
+      ]},
+      "title": {"en": "Corrections → rules", "zh": "纠错沉淀为规则"},
+      "insight": {
+        "en": "You correct Claude fairly often — those corrections are project rules trapped in conversation history. Each correction that graduates into CLAUDE.md is one you never have to make again.",
+        "zh": "你纠正 Claude 的频率不低 — 这些纠错其实是被困在聊天记录里的项目规则。每一条升级进 CLAUDE.md 的纠错，都是你以后不用再说的一句话。"
+      },
+      "promptRewrite": {
+        "en": "That's the second time I've corrected this. Add a rule to CLAUDE.md so it never happens again, and show me the line you added.",
+        "zh": "这是我第二次纠正这个问题了。把它写成 CLAUDE.md 里的一条规则，保证以后不再犯，并把加的那行给我看。"
+      },
+      "expectedImpact": {"en": "+6-10 Architecture, -repeat corrections (+Steering).", "zh": "+6-10 架构力；重复纠错下降（导航力受益）。"}
+    },
+    {
+      "id": "custom-command-for-repeats",
+      "dimensionId": "architecture",
+      "domain": "persistence",
+      "actionType": "setup",
+      "trigger": {"all": [
+        {"path": "toolcraftSummary.customCommands", "op": "lenEq", "value": 0},
+        {"path": "projectAssets.cwdResolved", "op": "truthy"},
+        {"path": "stats.validSessions", "op": "gte", "value": 8}
+      ]},
+      "title": {"en": "Turn rituals into /commands", "zh": "把固定流程变成 /命令"},
+      "insight": {
+        "en": "Any prompt you've typed three times is a slash command waiting to be created. A file in .claude/commands/ turns your recurring ritual (review, release check, status recap) into two keystrokes.",
+        "zh": "任何你打过三遍的 prompt 都该变成一个斜杠命令。放一个文件到 .claude/commands/，你的固定流程（review、发布检查、进度回顾）就变成两个按键。"
+      },
+      "asset": {
+        "type": "file",
+        "suggestedPath": ".claude/commands/checkpoint.md",
+        "template": "---\ndescription: Recap progress and verify state before continuing\n---\n\nSummarize: 1) what we changed this session (files + why), 2) what's verified working vs untested, 3) open risks. Then run the test suite and report results.\n"
+      },
+      "promptRewrite": {
+        "en": "Create .claude/commands/checkpoint.md that makes /checkpoint recap the session's changes and run the tests. Use my usual recap format.",
+        "zh": "创建 .claude/commands/checkpoint.md，让 /checkpoint 自动回顾本会话的改动并跑测试。用我平时的回顾格式。"
+      },
+      "expectedImpact": {"en": "+7 Architecture, +3 Toolcraft; ritual becomes muscle memory.", "zh": "+7 架构力，+3 工具力；流程变成肌肉记忆。"}
+    },
+    {
+      "id": "define-custom-agents",
+      "dimensionId": "architecture",
+      "domain": "persistence",
+      "actionType": "setup",
+      "trigger": {"all": [
+        {"path": "projectAssets.agentCount", "op": "eq", "value": 0},
+        {"path": "projectAssets.cwdResolved", "op": "truthy"},
+        {"path": "toolcraftSummary.subagentCalls", "op": "gte", "value": 10}
+      ]},
+      "title": {"en": "Name your specialists", "zh": "给你的专家 agent 定编制"},
+      "insight": {
+        "en": "You delegate to generic subagents a lot. Recurring roles (code reviewer, test writer, doc auditor) deserve named agent definitions in .claude/agents/ — with a tuned system prompt and tool restrictions, they outperform a generic agent every time.",
+        "zh": "你经常派活给通用 subagent。反复出现的角色（代码评审、测试编写、文档审计）值得在 .claude/agents/ 里正式定义 — 有定制 system prompt 和工具白名单的专属 agent，每次都比通用的强。"
+      },
+      "asset": {
+        "type": "file",
+        "suggestedPath": ".claude/agents/reviewer.md",
+        "template": "---\nname: reviewer\ndescription: Reviews diffs for correctness and hidden risks before merging\ntools: Read, Grep, Glob, Bash\n---\n\nYou are a strict code reviewer for {{project}}. Focus on correctness bugs, edge cases, and regressions. Never suggest style-only changes. Always end with a verdict: SHIP / FIX FIRST.\n"
+      },
+      "promptRewrite": {
+        "en": "Based on the kinds of subagent tasks I run most, define 2 custom agents in .claude/agents/ with focused prompts and minimal tool sets.",
+        "zh": "根据我最常派给 subagent 的任务类型，在 .claude/agents/ 里定义 2 个专属 agent，写好聚焦的 prompt 和最小工具集。"
+      },
+      "expectedImpact": {"en": "+8 Architecture; delegation quality jumps.", "zh": "+8 架构力；派活质量上一个台阶。"}
+    },
+    {
+      "id": "project-skill",
+      "dimensionId": "architecture",
+      "domain": "persistence",
+      "actionType": "setup",
+      "trigger": {"all": [
+        {"path": "projectAssets.hasSkillsDir", "op": "falsy"},
+        {"path": "projectAssets.cwdResolved", "op": "truthy"},
+        {"path": "stats.validSessions", "op": "gte", "value": 15}
+      ]},
+      "title": {"en": "Package your know-how", "zh": "把套路打包成 Skill"},
+      "insight": {
+        "en": "A long-running project accumulates procedures that live only in your head — release steps, data fixes, review checklists. A project skill in .claude/skills/ packages a procedure with its scripts so any session can run it reliably.",
+        "zh": "长期项目会积累一堆只存在你脑子里的流程 — 发布步骤、数据修复、评审清单。放在 .claude/skills/ 里的项目技能把流程连脚本一起打包，任何会话都能可靠执行。"
+      },
+      "asset": {
+        "type": "file",
+        "suggestedPath": ".claude/skills/release-check/SKILL.md",
+        "template": "---\nname: release-check\ndescription: Pre-release verification for {{project}}\n---\n\n# Release check\n\n1. Run the full test suite; abort on failure.\n2. Verify {{criticalPath}} manually.\n3. Check changelog covers all merged changes.\n4. Report GO / NO-GO with reasons.\n"
+      },
+      "promptRewrite": {
+        "en": "Take the procedure we just did and package it as a project skill under .claude/skills/, so next time it's one command.",
+        "zh": "把我们刚走完的这套流程打包成 .claude/skills/ 下的项目技能，下次一条命令就能跑。"
+      },
+      "expectedImpact": {"en": "+7 Architecture; procedures stop degrading over time.", "zh": "+7 架构力；流程不再随时间走样。"}
+    },
+    {
+      "id": "memory-for-context",
+      "dimensionId": "architecture",
+      "domain": "persistence",
+      "actionType": "prompt",
+      "trigger": {"all": [
+        {"path": "projectAssets.hasMemoryDir", "op": "falsy"},
+        {"path": "patterns.compactionCount", "op": "gte", "value": 3}
+      ]},
+      "title": {"en": "Stop re-briefing AI", "zh": "别再重复给 AI 补课"},
+      "insight": {
+        "en": "Your sessions outgrow the context window repeatedly, and each compaction loses nuance you then re-explain. Long-lived decisions and constraints belong in persistent memory or CLAUDE.md, where compaction can't eat them.",
+        "zh": "你的会话经常长到触发 compaction，每次压缩都会丢失细节，然后你再花时间重新解释。长期有效的决策和约束应该进持久 memory 或 CLAUDE.md — compaction 吃不掉它们。"
+      },
+      "promptRewrite": {
+        "en": "Before we continue: persist the key decisions and constraints from this session into memory so we never lose them to compaction.",
+        "zh": "继续之前：把这个会话里的关键决策和约束写进持久 memory，别让 compaction 再弄丢它们。"
+      },
+      "expectedImpact": {"en": "+8 Architecture, +Tempo; context survives compression.", "zh": "+8 架构力，节奏感受益；上下文在压缩后依然存活。"}
+    },
+
+    {
+      "id": "definition-of-done",
+      "dimensionId": "intent",
+      "domain": "verification",
+      "actionType": "habit",
+      "trigger": {"all": [
+        {"path": "signalsByPosition.directing.ratios.hasExpectedBehavior", "op": "lt", "value": 0.3},
+        {"path": "signalsByPosition.directing.messageCount", "op": "gte", "value": 5}
+      ]},
+      "title": {"en": "Attach a done-line", "zh": "每个任务带一条完成线"},
+      "insight": {
+        "en": "Most of your directives say what to do but not what 'done' looks like — so Claude decides for itself when to stop. One sentence of expected outcome turns a vague task into a checkable contract.",
+        "zh": "你的指令大多说了做什么，但没说'做成什么样才算完' — 于是 Claude 自己决定何时收工。一句期望结果，就能把模糊任务变成可验收的契约。"
+      },
+      "promptRewrite": {
+        "en": "Fix the upload flow. Done means: a 10MB file uploads without error, progress shows, and a failed upload gives a readable message — show me all three working.",
+        "zh": "修复上传流程。完成的标准：10MB 文件能无报错上传、有进度显示、失败时给出可读的错误提示 — 三条都演示给我看。"
+      },
+      "expectedImpact": {"en": "+8-12 Lock-On; fewer 'that's not what I meant' rounds.", "zh": "+8-12 瞄准力；'我不是这个意思'的来回明显变少。"}
+    },
+    {
+      "id": "ask-ai-to-self-verify",
+      "dimensionId": "verification",
+      "domain": "verification",
+      "actionType": "prompt",
+      "trigger": {"all": [
+        {"path": "labelRatios.requestTest", "op": "lt", "value": 0.05},
+        {"path": "outcomeTotals.fileEditCount", "op": "gte", "value": 20}
+      ]},
+      "title": {"en": "Make AI prove it", "zh": "让 AI 自己拿证据"},
+      "insight": {
+        "en": "You rarely ask for verification, so 'it should work now' goes unchallenged. The cheapest upgrade: make Claude run the proof itself and paste the output — you review evidence, not claims.",
+        "zh": "你很少要求验证，于是'现在应该可以了'就这么过去了。最便宜的升级：让 Claude 自己跑验证并贴出输出 — 你审的是证据，不是口头保证。"
+      },
+      "promptRewrite": {
+        "en": "After the fix, run the relevant tests (or a quick reproduction) yourself and paste the actual output. Don't tell me it works — show me.",
+        "zh": "修完之后，自己跑相关测试（或快速复现一遍），把真实输出贴出来。别告诉我'可以了' — 拿证据。"
+      },
+      "expectedImpact": {"en": "+10-15 Proof Check; slight time cost per task.", "zh": "+10-15 鉴定术；每个任务多花一点点时间。"}
+    },
+    {
+      "id": "hook-verification-loop",
+      "dimensionId": "verification",
+      "domain": "verification",
+      "actionType": "setup",
+      "trigger": {"all": [
+        {"path": "projectAssets.settingsHookCount", "op": "eq", "value": 0},
+        {"path": "projectAssets.cwdResolved", "op": "truthy"},
+        {"path": "outcomeTotals.fileEditCount", "op": "gte", "value": 100}
+      ]},
+      "title": {"en": "Automate the checking", "zh": "让检查自动发生"},
+      "insight": {
+        "en": "Hundreds of edits, zero hooks. A PostToolUse hook that runs lint/typecheck after every edit means broken code gets caught the moment it's written — without you asking, every time.",
+        "zh": "几百次编辑，零 hook。配一个 PostToolUse hook，每次编辑后自动跑 lint/typecheck，坏代码在写出来的那一刻就被抓住 — 不用你开口，每次都执行。"
+      },
+      "asset": {
+        "type": "file",
+        "suggestedPath": ".claude/settings.json",
+        "template": "{\n  \"hooks\": {\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"Edit|Write\",\n        \"hooks\": [\n          {\"type\": \"command\", \"command\": \"{{lintOrTypecheckCommand}}\"}\n        ]\n      }\n    ]\n  }\n}\n"
+      },
+      "promptRewrite": {
+        "en": "Set up a PostToolUse hook in .claude/settings.json that runs our typecheck after every file edit, so errors surface immediately.",
+        "zh": "在 .claude/settings.json 里配一个 PostToolUse hook，每次文件编辑后自动跑我们的 typecheck，错误当场暴露。"
+      },
+      "expectedImpact": {"en": "+10 Proof Check, +4 Architecture; verification becomes ambient.", "zh": "+10 鉴定术，+4 架构力；验证变成环境自带。"}
+    },
+    {
+      "id": "inspect-before-accept",
+      "dimensionId": "verification",
+      "domain": "verification",
+      "actionType": "habit",
+      "trigger": {"all": [
+        {"path": "patterns.blindAccepts", "op": "gte", "value": 3}
+      ]},
+      "title": {"en": "Peek before you nod", "zh": "点头之前先扫一眼"},
+      "insight": {
+        "en": "You said 'ok/好的' to substantive code changes multiple times without inspecting them. You don't need a full review — one targeted question per acceptance forces Claude to expose its weakest assumption.",
+        "zh": "你多次对实质性代码改动直接说'好的'而没有检查。不需要完整 review — 每次验收前问一个针对性问题，就能逼 Claude 暴露它最薄弱的假设。"
+      },
+      "promptRewrite": {
+        "en": "Before I accept this: what's the riskiest assumption in this change, and what would break first if it's wrong?",
+        "zh": "在我接受之前：这个改动里风险最大的假设是什么？如果它错了，最先坏掉的是哪里？"
+      },
+      "expectedImpact": {"en": "+10-14 Proof Check; costs ~30 seconds per acceptance.", "zh": "+10-14 鉴定术；每次验收多花约 30 秒。"}
+    },
+    {
+      "id": "risk-scan-prompt",
+      "dimensionId": "verification",
+      "domain": "verification",
+      "actionType": "prompt",
+      "trigger": {"all": [
+        {"path": "labelRatios.proactiveReview", "op": "lt", "value": 0.1},
+        {"path": "stats.humanMessages", "op": "gte", "value": 20}
+      ]},
+      "title": {"en": "Ask what could break", "zh": "先问哪里会塌"},
+      "insight": {
+        "en": "You rarely challenge Claude's plans before execution. A single pre-mortem question ('what breaks?') catches the failure modes Claude knows about but won't volunteer.",
+        "zh": "你很少在执行前质疑 Claude 的方案。一句事前验尸的提问（'哪里会坏？'）就能挖出 Claude 心里有数但不会主动说的失败模式。"
+      },
+      "promptRewrite": {
+        "en": "Before you implement this: list the top 3 ways this approach could fail or bite us later, and how you'd guard each one.",
+        "zh": "动手之前：列出这个方案最可能翻车或留坑的 3 个点，以及你打算怎么防。"
+      },
+      "expectedImpact": {"en": "+8-12 Proof Check; surfaces hidden trade-offs early.", "zh": "+8-12 鉴定术；隐藏取舍提前浮出水面。"}
+    },
+    {
+      "id": "make-tests-the-contract",
+      "dimensionId": "verification",
+      "domain": "verification",
+      "actionType": "prompt",
+      "trigger": {"all": [
+        {"path": "techStackDetected", "op": "includesAny", "value": ["jest", "vitest", "pytest", "playwright", "cypress", "mocha", "testing-library"]},
+        {"path": "labelRatios.requestTest", "op": "lt", "value": 0.08}
+      ]},
+      "title": {"en": "Test first, code second", "zh": "先写测试再写码"},
+      "insight": {
+        "en": "Your project has a test framework but you rarely bring it into the conversation. Asking for a failing test BEFORE the fix turns 'trust me' into 'watch it pass'.",
+        "zh": "你的项目有测试框架，但对话里几乎不出现它。修复之前先要一个会失败的测试，'相信我'就变成了'看它变绿'。"
+      },
+      "promptRewrite": {
+        "en": "Write a failing test that reproduces this bug first. Then fix it and show the test passing.",
+        "zh": "先写一个能复现这个 bug 的失败测试，然后修复，最后让我看到测试通过。"
+      },
+      "expectedImpact": {"en": "+12 Proof Check; regressions get a permanent guard.", "zh": "+12 鉴定术；回归 bug 从此有常驻岗哨。"}
+    },
+
+    {
+      "id": "scope-sessions",
+      "dimensionId": "tempo",
+      "domain": "tempo",
+      "actionType": "habit",
+      "trigger": {"all": [
+        {"path": "patterns.compactionCount", "op": "gte", "value": 3}
+      ]},
+      "title": {"en": "One session, one battle", "zh": "一个会话打一场仗"},
+      "insight": {
+        "en": "Your sessions repeatedly outgrow the context window (multiple compactions detected). Each compression loses nuance. Closing a session at a natural milestone and opening a fresh one with a written handoff beats fighting a degraded context.",
+        "zh": "你的会话经常长到触发多次 compaction，每次压缩都在丢细节。在自然的里程碑处主动收尾、用一段书面交接开新会话，比在退化的上下文里硬撑效果好得多。"
+      },
+      "promptRewrite": {
+        "en": "We've hit a milestone. Write a handoff note (what's done, what's verified, what's next, open risks) — I'll start a fresh session with it.",
+        "zh": "到里程碑了。写一段交接（做完了什么、验证了什么、下一步、遗留风险）— 我拿它开一个新会话。"
+      },
+      "expectedImpact": {"en": "+8-12 Tempo; each session runs at full context quality.", "zh": "+8-12 节奏感；每个会话都跑在满血上下文上。"}
+    },
+    {
+      "id": "milestone-recap",
+      "dimensionId": "tempo",
+      "domain": "tempo",
+      "actionType": "prompt",
+      "trigger": {"all": [
+        {"path": "labelRatios.summary", "op": "lt", "value": 0.03},
+        {"path": "stats.validSessions", "op": "gte", "value": 8}
+      ]},
+      "title": {"en": "Recap at checkpoints", "zh": "阶段性盘点进度"},
+      "insight": {
+        "en": "You almost never ask for a recap, so drift accumulates silently — until something's off and you can't tell when it started. A periodic 30-second recap keeps you and Claude looking at the same map.",
+        "zh": "你几乎不要求回顾，偏差就这样静默累积 — 直到某个地方不对劲，你也说不清是从哪一步开始歪的。定期 30 秒盘点让你和 Claude 始终看同一张地图。"
+      },
+      "promptRewrite": {
+        "en": "Quick recap before we continue: what have we changed so far, what's verified working, and what assumptions are we carrying forward?",
+        "zh": "继续之前快速盘点：目前改了什么、哪些已验证可用、我们带着哪些假设在往前走？"
+      },
+      "expectedImpact": {"en": "+8 Tempo; drift caught at step 2, not step 20.", "zh": "+8 节奏感;跑偏在第 2 步被抓住,而不是第 20 步。"}
+    },
+    {
+      "id": "structured-briefs",
+      "dimensionId": "tempo",
+      "domain": "tempo",
+      "actionType": "habit",
+      "trigger": {"all": [
+        {"path": "patterns.demandOverloads", "op": "gte", "value": 2}
+      ]},
+      "title": {"en": "Batch with structure", "zh": "批量交代要有结构"},
+      "insight": {
+        "en": "Giving several tasks at once is good practice — but yours arrive as unstructured walls of text, forcing Claude to guess the priorities and boundaries. Numbering with priorities keeps the batch and adds the structure.",
+        "zh": "一次交代多个任务是好习惯 — 但你的任务是糊成一团的长文本，Claude 只能猜优先级和边界。编号 + 优先级既保留批量的效率，又补上结构。"
+      },
+      "promptRewrite": {
+        "en": "Three tasks this session, in priority order: 1) [must ship] fix X — done means…; 2) [should] refactor Y; 3) [if time] clean up Z. Do them in order and checkpoint after #1.",
+        "zh": "本次会话三个任务，按优先级：1)[必须] 修复 X — 完成标准是…；2)[应该] 重构 Y；3)[有余力] 清理 Z。按顺序做，第 1 项完成后先停下确认。"
+      },
+      "expectedImpact": {"en": "+6-10 Tempo, +Lock-On; batching stays, guessing stops.", "zh": "+6-10 节奏感，瞄准力受益；批量还在，瞎猜没了。"}
+    },
+    {
+      "id": "checkpoint-gates",
+      "dimensionId": "tempo",
+      "domain": "tempo",
+      "actionType": "habit",
+      "trigger": {"all": [
+        {"path": "labelRatios.checkpoint", "op": "lt", "value": 0.02},
+        {"path": "outcomeTotals.fileEditCount", "op": "gte", "value": 50}
+      ]},
+      "title": {"en": "Gate the big moves", "zh": "大动作前设闸门"},
+      "insight": {
+        "en": "Claude ships large changes end-to-end without pause points because you never set gates. On multi-stage work, a 'stop after stage 1 for my check' clause converts one big gamble into several small verified bets.",
+        "zh": "Claude 一口气跑完大改动，因为你从不设停下确认的点。多阶段工作里加一句'第一阶段完成后停下等我检查'，一场豪赌就变成几次小额验证下注。"
+      },
+      "promptRewrite": {
+        "en": "Do the migration in stages: schema first, then data, then the API. STOP after each stage and show me the verification before moving on.",
+        "zh": "迁移分三步:先 schema、再数据、最后 API。每步完成后停下,给我看验证结果再进入下一步。"
+      },
+      "expectedImpact": {"en": "+6 Tempo, +Proof Check; blast radius shrinks per stage.", "zh": "+6 节奏感，鉴定术受益；每一步的爆炸半径都变小。"}
+    },
+    {
+      "id": "close-with-signal",
+      "dimensionId": "completion",
+      "domain": "tempo",
+      "actionType": "habit",
+      "trigger": {"all": [
+        {"path": "outcomeTotals.cleanEndRatio", "op": "lt", "value": 0.6},
+        {"path": "stats.validSessions", "op": "gte", "value": 5}
+      ]},
+      "title": {"en": "End on a verdict", "zh": "用一句判词收尾"},
+      "insight": {
+        "en": "Many of your sessions just… stop. No confirmation of what state things were left in — which future-you pays for when resuming. A 15-second closing verdict makes every session resumable.",
+        "zh": "你的很多会话是'戛然而止'的 — 没有确认当时的状态，代价由后来恢复现场的你来付。15 秒的收尾判词让每个会话都可续接。"
+      },
+      "promptRewrite": {
+        "en": "Wrapping up: state what shipped, what's verified, what's half-done, and the exact next step. Then we're done.",
+        "zh": "收尾：说清这次交付了什么、验证了什么、什么做到一半、下一步的确切动作。然后收工。"
+      },
+      "expectedImpact": {"en": "+10-15 Completion; resuming costs minutes, not archaeology.", "zh": "+10-15 收尾度；续接只需几分钟，不用考古。"}
+    },
+
+    {
+      "id": "correct-with-why",
+      "dimensionId": "feedback",
+      "domain": "steering",
+      "actionType": "habit",
+      "trigger": {"all": [
+        {"path": "signalsByPosition.correcting.ratios.hasReasoning", "op": "lt", "value": 0.2},
+        {"path": "signalsByPosition.correcting.messageCount", "op": "gte", "value": 3}
+      ]},
+      "title": {"en": "Correct with the why", "zh": "纠错要带上为什么"},
+      "insight": {
+        "en": "Your corrections say 'wrong, change it' without the reason — Claude fixes that instance but can't generalize, so sibling mistakes survive. Adding one 'because' per correction teaches the rule, not the case.",
+        "zh": "你的纠错只说'不对，改掉'，不给原因 — Claude 修得了这一处,却学不会规则,同类错误照样活着。每次纠错多一句'因为'，教的就是规则而不是个案。"
+      },
+      "promptRewrite": {
+        "en": "This is wrong because saving depends on view mode here, not edit mode — that's why the state is stale. Fix this instance, then check if the same assumption exists anywhere else.",
+        "zh": "这里错了，因为保存逻辑依赖的是 view mode 而不是 edit mode — 所以状态才会是旧的。修掉这一处,再检查其他地方有没有同样的假设。"
+      },
+      "expectedImpact": {"en": "+10-15 Steering; one correction kills a whole error family.", "zh": "+10-15 导航力；一次纠错消灭一整族错误。"}
+    },
+    {
+      "id": "show-dont-tell",
+      "dimensionId": "feedback",
+      "domain": "steering",
+      "actionType": "prompt",
+      "trigger": {"all": [
+        {"path": "signalsByPosition.correcting.messageCount", "op": "gte", "value": 3},
+        {"path": "labelRatios.hasCodeBlock", "op": "lt", "value": 0.05}
+      ]},
+      "title": {"en": "Paste the example", "zh": "直接贴正例"},
+      "insight": {
+        "en": "You describe what you want in prose; Claude reconstructs it with guesses. One pasted example — the shape of the output you want, an existing file that does it right — is worth three rounds of description.",
+        "zh": "你用文字描述想要的东西，Claude 靠猜来还原。贴一个正例 — 想要的输出长什么样、哪个现有文件是对的写法 — 顶三轮文字描述。"
+      },
+      "promptRewrite": {
+        "en": "Not like that. Here's the pattern I want — [paste example]. Match this structure exactly, applied to the new case.",
+        "zh": "不是这样。我要的是这种写法 — [贴正例]。严格按这个结构，套到新场景上。"
+      },
+      "expectedImpact": {"en": "+8-12 Steering; correction rounds drop sharply.", "zh": "+8-12 导航力；纠错轮次大幅下降。"}
+    },
+    {
+      "id": "anchor-with-paths",
+      "dimensionId": "intent",
+      "domain": "steering",
+      "actionType": "habit",
+      "trigger": {"all": [
+        {"path": "signalsByPosition.directing.ratios.hasFilePath", "op": "lt", "value": 0.25},
+        {"path": "signalsByPosition.directing.messageCount", "op": "gte", "value": 5}
+      ]},
+      "title": {"en": "Point at the file", "zh": "把文件指给它看"},
+      "insight": {
+        "en": "Your directives rarely name files, so Claude spends its first minutes searching for where you mean — and sometimes picks wrong. A path or function name in the first sentence removes the whole guessing phase.",
+        "zh": "你的指令很少点名文件，Claude 开头几分钟都在找你说的是哪里 — 有时还找错。第一句话里带上路径或函数名，猜谜环节整个消失。"
+      },
+      "promptRewrite": {
+        "en": "In src/app/task_schedule/save.ts, the handleSave function — make saving work in view mode too, not just edit mode.",
+        "zh": "src/app/task_schedule/save.ts 里的 handleSave — 让 view mode 下也能保存,不只是 edit mode。"
+      },
+      "expectedImpact": {"en": "+6-10 Lock-On, +Efficiency; zero search preamble.", "zh": "+6-10 瞄准力，效率受益；省掉整段搜索前奏。"}
+    },
+    {
+      "id": "context-rich-openings",
+      "dimensionId": "context",
+      "domain": "steering",
+      "actionType": "prompt",
+      "trigger": {"all": [
+        {"path": "firstMessage.avgLength", "op": "lt", "value": 150},
+        {"path": "stats.validSessions", "op": "gte", "value": 5}
+      ]},
+      "title": {"en": "Open with the map", "zh": "开场先给地图"},
+      "insight": {
+        "en": "Your sessions open thin — a short ask with no stack, structure, or goal framing. The first message sets the quality ceiling for the whole session: 60 seconds of scene-setting up front saves the correction tax later.",
+        "zh": "你的会话开场很薄 — 一句短请求，没有技术栈、结构或目标框架。第一条消息决定整个会话的质量上限:开头 60 秒的铺垫,省的是后面的纠错税。"
+      },
+      "promptRewrite": {
+        "en": "Context: Next.js 14 + Prisma, this repo is a booking system. Today's goal: add cancellation flow. Constraints: don't touch the payment module; follow the pattern in src/flows/refund.ts. First task: …",
+        "zh": "背景:Next.js 14 + Prisma,这个仓库是预订系统。今天目标:加取消流程。约束:别动支付模块;参考 src/flows/refund.ts 的写法。第一个任务:…"
+      },
+      "expectedImpact": {"en": "+10-15 Scene Setting; the whole session inherits the frame.", "zh": "+10-15 画面感；整个会话都继承这个框架。"}
+    },
+    {
+      "id": "answer-ai-questions",
+      "dimensionId": "feedback",
+      "domain": "steering",
+      "actionType": "habit",
+      "trigger": {"all": [
+        {"path": "patterns.noReplyToQuestion", "op": "gte", "value": 3}
+      ]},
+      "title": {"en": "Don't skip its questions", "zh": "别跳过它的提问"},
+      "insight": {
+        "en": "Claude asked you a question and you replied 'ok/继续' several times — those questions were forks in the road, and by not choosing, you let Claude pick silently. If the question annoys you, answer it once in CLAUDE.md so it stops being asked.",
+        "zh": "Claude 向你提问,你回了'好的/继续' — 这种情况出现了好几次。那些问题是岔路口,你不选,Claude 就替你默默选了。如果嫌问得烦,把答案写进 CLAUDE.md,以后它就不问了。"
+      },
+      "promptRewrite": {
+        "en": "Good question — go with option B (keep backwards compatibility). Also add this decision to CLAUDE.md so you don't need to ask again.",
+        "zh": "问得好 — 选 B(保持向后兼容)。顺便把这个决定写进 CLAUDE.md,以后不用再问。"
+      },
+      "expectedImpact": {"en": "+8 Steering; silent wrong turns stop happening.", "zh": "+8 导航力；无声的错误拐弯不再发生。"}
+    },
+    {
+      "id": "break-retry-loops",
+      "dimensionId": "feedback",
+      "domain": "steering",
+      "actionType": "prompt",
+      "trigger": {"all": [
+        {"path": "patterns.retryLoops", "op": "gte", "value": 2}
+      ]},
+      "title": {"en": "Change tack, not volume", "zh": "换打法，别复读"},
+      "insight": {
+        "en": "You repeated near-identical asks 3+ times in a row — the approach was failing, and repetition just replayed the failure. The third try should change strategy: demand a diagnosis before another attempt.",
+        "zh": "你连续 3 次发了几乎一样的请求 — 说明这个路数已经失败了,复读只是重播失败。第三次就该换策略:先要诊断,再允许下一次尝试。"
+      },
+      "promptRewrite": {
+        "en": "Stop. Before trying again: explain why the last two attempts failed, list your assumptions, and tell me which one you're least sure of. Then propose a DIFFERENT approach.",
+        "zh": "停。再试之前:解释前两次为什么失败,列出你的假设,告诉我你最没把握的是哪一条。然后提出一个不同的方案。"
+      },
+      "expectedImpact": {"en": "+10-15 Steering; walls become doors.", "zh": "+10-15 导航力；把撞墙变成开门。"}
+    },
+
+    {
+      "id": "sharpen-strong-lockon",
+      "dimensionId": "intent",
+      "domain": "steering",
+      "actionType": "habit",
+      "trigger": {"all": [
+        {"path": "signalsByPosition.directing.ratios.hasExpectedBehavior", "op": "gte", "value": 0.4},
+        {"path": "signalsByPosition.directing.ratios.hasConstraint", "op": "lt", "value": 0.2}
+      ]},
+      "title": {"en": "Add the guardrails", "zh": "给指令加上护栏"},
+      "insight": {
+        "en": "Your goals are clear but your constraints are rare — Claude knows what to build, not what NOT to touch. High performers pair every goal with a boundary: scope, style, or no-go zones.",
+        "zh": "你的目标很清楚,但约束很少 — Claude 知道要做什么,却不知道什么不能碰。高手的每个目标都配一条边界:范围、风格、或禁区。"
+      },
+      "promptRewrite": {
+        "en": "Add the export feature. Constraints: no new dependencies, don't change the public API, and keep it under 200 lines — if you can't, stop and tell me why.",
+        "zh": "加导出功能。约束:不引入新依赖、不改公开 API、控制在 200 行以内 — 做不到就停下来说明原因。"
+      },
+      "expectedImpact": {"en": "+5-8 Lock-On (82 → 90 territory).", "zh": "+5-8 瞄准力(从 82 冲 90 的那种提升)。"}
+    },
+    {
+      "id": "cross-pollinate-constraints",
+      "dimensionId": "feedback",
+      "domain": "steering",
+      "actionType": "habit",
+      "trigger": {"all": [
+        {"path": "signalsByPosition.directing.ratios.hasConstraint", "op": "gte", "value": 0.25},
+        {"path": "signalsByPosition.correcting.ratios.hasConstraint", "op": "lt", "value": 0.15},
+        {"path": "signalsByPosition.correcting.messageCount", "op": "gte", "value": 3}
+      ]},
+      "title": {"en": "Bring constraints to fixes", "zh": "把约束带进纠错"},
+      "insight": {
+        "en": "You write great constraints when assigning work, but your corrections drop them — 'fix it' without boundaries invites a second wrong fix. The same constraint language that aims Claude can also re-aim it.",
+        "zh": "你派活时约束写得很好,纠错时却全丢了 — 没有边界的'修一下'很容易招来第二个错误修法。用来瞄准的约束语言,同样可以用来重新瞄准。"
+      },
+      "promptRewrite": {
+        "en": "That fix is wrong — redo it, but: only touch the validation layer, don't modify the schema, and keep the existing error codes.",
+        "zh": "这个修法不对 — 重做,但:只动校验层、不改 schema、保留现有错误码。"
+      },
+      "expectedImpact": {"en": "+6-10 Steering via a habit you already have.", "zh": "+6-10 导航力 — 用的还是你已有的习惯。"}
+    },
+    {
+      "id": "second-opinion-agent",
+      "dimensionId": "verification",
+      "domain": "orchestration",
+      "actionType": "orchestration",
+      "trigger": {"all": [
+        {"path": "toolcraftSummary.subagentCalls", "op": "gte", "value": 5},
+        {"path": "labelRatios.proactiveReview", "op": "lt", "value": 0.15}
+      ]},
+      "title": {"en": "Hire a second opinion", "zh": "雇一个第二意见"},
+      "insight": {
+        "en": "You already use subagents for work — use one as a skeptic. A fresh agent reviewing the main session's diff has no attachment to the solution and catches what the author-agent can't see.",
+        "zh": "你已经用 subagent 干活了 — 再用一个当质疑者。让一个全新的 agent 来审主会话的 diff,它对方案没有感情,能看见'作者'看不见的问题。"
+      },
+      "promptRewrite": {
+        "en": "Before we merge this: spawn a reviewer subagent with fresh eyes to audit the diff for bugs and risky assumptions. Show me its verdict.",
+        "zh": "合并之前:派一个'新眼睛'的评审 subagent 审计这份 diff 的 bug 和危险假设,把它的结论给我看。"
+      },
+      "expectedImpact": {"en": "+8-12 Proof Check using tools you already know.", "zh": "+8-12 鉴定术 — 用的还是你熟悉的工具。"}
+    },
+    {
+      "id": "artifact-for-review",
+      "dimensionId": "toolcraft",
+      "domain": "orchestration",
+      "actionType": "prompt",
+      "trigger": {"all": [
+        {"path": "toolcraftSummary.orchestration.artifactsPublished", "op": "eq", "value": 0},
+        {"path": "stats.validSessions", "op": "gte", "value": 10},
+        {"path": "toolcraftSummary.orchestration.workflowRuns", "op": "gte", "value": 1}
+      ]},
+      "title": {"en": "Render results as pages", "zh": "把结果做成可读页面"},
+      "insight": {
+        "en": "Your big analyses end life as terminal text. For anything you'll re-read or share — audit results, architecture maps, progress dashboards — an Artifact page is easier to scan and lives beyond the session.",
+        "zh": "你的大型分析最后都埋在终端文本里。任何你会回看或分享的东西 — 审计结果、架构图、进度面板 — 做成 Artifact 页面更好读,也能活到会话之外。"
+      },
+      "promptRewrite": {
+        "en": "Publish this audit as an artifact page — findings ranked by severity, with code references — so I can review it properly and share it.",
+        "zh": "把这次审计发布成 artifact 页面 — 按严重度排序、带代码引用 — 方便我细看和分享。"
+      },
+      "expectedImpact": {"en": "+3-5 Toolcraft; analysis becomes a durable deliverable.", "zh": "+3-5 工具力；分析变成可留存的交付物。"}
+    }
+  ]
+}

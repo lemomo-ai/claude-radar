@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2.0",
+  "schemaVersion": "2.1",
 
   "categories": {
     "communication": {
@@ -13,8 +13,8 @@
     "engineering": {
       "name": {"en": "Engineering", "zh": "工程力"},
       "description": {
-        "en": "How well you leverage Claude Code's platform — skills, MCPs, subagents, persistent setup.",
-        "zh": "你把 Claude Code 这个平台用到几成 — skill、MCP、subagent、长期化设置。"
+        "en": "How well you leverage Claude Code's platform — skills, MCPs, subagents, orchestration, persistent setup.",
+        "zh": "你把 Claude Code 这个平台用到几成 — skill、MCP、subagent、编排、长期化设置。"
       },
       "dimensionIds": ["toolcraft", "architecture", "tempo"]
     },
@@ -34,6 +34,10 @@
     "efficiency", "verification", "completion"
   ],
 
+  "termKinds": {
+    "_doc": "baselineTerms are evaluated deterministically by compute-baselines.mjs. Kinds: pivot=(v-pivot)*coeff; ratioClamp=clamp(v/div,lo,hi)*coeff; perClamp=clamp(num/max(den,1),lo,hi)*coeff; perPivot=(num/max(den,1)-pivot)*coeff; flag=truthy?coeff:0; threshold=v>gt?coeff:0; countCap=min(count(v),cap)*coeff (arrays use length); shiftClamp=clamp((v-sub)/div,lo,hi)*coeff. Optional fallbackIfZero={check,signal}: when facts[check]==0, read signal instead."
+  },
+
   "dimensions": {
     "intent": {
       "category": "communication",
@@ -50,9 +54,19 @@
         "directing.ratios.isVague",
         "directing.ratios.hasIdentifier"
       ],
-      "baselineFormula": "50 + (directing.ratios.hasExpectedBehavior - 0.3) * 80 + (directing.ratios.hasConstraint - 0.2) * 60 - (directing.ratios.isVague - 0.15) * 100 + (directing.ratios.hasIdentifier - 0.2) * 30, clamped [0, 100]",
+      "baselineFormula": "50 + (directing.hasExpectedBehavior - 0.3) * 80 + (directing.hasConstraint - 0.2) * 60 - (directing.isVague - 0.15) * 100 + (directing.hasIdentifier - 0.2) * 30, clamped [0, 100]",
+      "baselineTerms": {
+        "base": 50,
+        "terms": [
+          {"kind": "pivot", "signal": "signalsByPosition.directing.ratios.hasExpectedBehavior", "pivot": 0.3, "coeff": 80, "fallbackIfZero": {"check": "signalsByPosition.directing.messageCount", "signal": "labelRatios.hasExpectedBehavior"}},
+          {"kind": "pivot", "signal": "signalsByPosition.directing.ratios.hasConstraint", "pivot": 0.2, "coeff": 60, "fallbackIfZero": {"check": "signalsByPosition.directing.messageCount", "signal": "labelRatios.hasConstraint"}},
+          {"kind": "pivot", "signal": "signalsByPosition.directing.ratios.isVague", "pivot": 0.15, "coeff": -100, "fallbackIfZero": {"check": "signalsByPosition.directing.messageCount", "signal": "labelRatios.isVague"}},
+          {"kind": "pivot", "signal": "signalsByPosition.directing.ratios.hasIdentifier", "pivot": 0.2, "coeff": 30, "fallbackIfZero": {"check": "signalsByPosition.directing.messageCount", "signal": "labelRatios.hasIdentifier"}}
+        ],
+        "clamp": [0, 100]
+      },
       "adjustmentGuide": {
-        "upward": "keyMessages show terse but surgically precise instructions (filePath + identifier + action in < 100 chars) — silent expert precision, not low intent.",
+        "upward": "keyMessages / dimensionEvidence.intent show terse but surgically precise instructions (filePath + identifier + action in < 100 chars) — silent expert precision, not low intent.",
         "downward": "keyMessages show verbose messages that still lack clear deliverables — length without clarity."
       }
     },
@@ -73,7 +87,17 @@
         "firstMessage.sessionsWithTechStack",
         "firstMessage.sessionsWithFilePath"
       ],
-      "baselineFormula": "50 + (opening.ratios.hasFilePath - 0.3) * 60 + (opening.ratios.hasTechStack - 0.3) * 50 + clamp((firstMessage.avgLength - 100) / 300, -0.5, 0.5) * 30 + (opening.ratios.hasError - 0.1) * 40, clamped [0, 100]",
+      "baselineFormula": "50 + (opening.hasFilePath - 0.3) * 60 + (opening.hasTechStack - 0.3) * 50 + clamp((firstMessage.avgLength - 100) / 300, -0.5, 0.5) * 30 + (opening.hasError - 0.1) * 40, clamped [0, 100]",
+      "baselineTerms": {
+        "base": 50,
+        "terms": [
+          {"kind": "pivot", "signal": "signalsByPosition.opening.ratios.hasFilePath", "pivot": 0.3, "coeff": 60, "fallbackIfZero": {"check": "signalsByPosition.opening.messageCount", "signal": "labelRatios.hasFilePath"}},
+          {"kind": "pivot", "signal": "signalsByPosition.opening.ratios.hasTechStack", "pivot": 0.3, "coeff": 50, "fallbackIfZero": {"check": "signalsByPosition.opening.messageCount", "signal": "labelRatios.hasTechStack"}},
+          {"kind": "shiftClamp", "signal": "firstMessage.avgLength", "sub": 100, "div": 300, "clamp": [-0.5, 0.5], "coeff": 30},
+          {"kind": "pivot", "signal": "signalsByPosition.opening.ratios.hasError", "pivot": 0.1, "coeff": 40, "fallbackIfZero": {"check": "signalsByPosition.opening.messageCount", "signal": "labelRatios.hasError"}}
+        ],
+        "clamp": [0, 100]
+      },
       "adjustmentGuide": {
         "upward": "First messages consistently provide project structure + tech stack even without triggering keyword matches (e.g. pasting file trees, config snippets).",
         "downward": "Opening messages are long but generic — length without project-specific information."
@@ -95,9 +119,20 @@
         "patterns.retryLoops",
         "patterns.noReplyToQuestion"
       ],
-      "baselineFormula": "50 + (correcting.ratios.hasReasoning - 0.2) * 80 + (correcting.ratios.hasFilePath - 0.2) * 40 + (correcting.ratios.hasIdentifier - 0.2) * 40 - clamp(patterns.retryLoops / max(stats.validSessions, 1), 0, 1) * 40 - clamp(patterns.noReplyToQuestion / max(stats.humanMessages, 1), 0, 0.3) * 100, clamped [0, 100]",
+      "baselineFormula": "50 + (correcting.hasReasoning - 0.2) * 80 + (correcting.hasFilePath - 0.2) * 40 + (correcting.hasIdentifier - 0.2) * 40 - clamp(retryLoops / max(validSessions, 1), 0, 1) * 40 - clamp(noReplyToQuestion / max(humanMessages, 1), 0, 0.3) * 100, clamped [0, 100]",
+      "baselineTerms": {
+        "base": 50,
+        "terms": [
+          {"kind": "pivot", "signal": "signalsByPosition.correcting.ratios.hasReasoning", "pivot": 0.2, "coeff": 80, "fallbackIfZero": {"check": "signalsByPosition.correcting.messageCount", "signal": "labelRatios.hasReasoning"}},
+          {"kind": "pivot", "signal": "signalsByPosition.correcting.ratios.hasFilePath", "pivot": 0.2, "coeff": 40, "fallbackIfZero": {"check": "signalsByPosition.correcting.messageCount", "signal": "labelRatios.hasFilePath"}},
+          {"kind": "pivot", "signal": "signalsByPosition.correcting.ratios.hasIdentifier", "pivot": 0.2, "coeff": 40, "fallbackIfZero": {"check": "signalsByPosition.correcting.messageCount", "signal": "labelRatios.hasIdentifier"}},
+          {"kind": "perClamp", "num": "patterns.retryLoops", "den": "stats.validSessions", "clamp": [0, 1], "coeff": -40},
+          {"kind": "perClamp", "num": "patterns.noReplyToQuestion", "den": "stats.humanMessages", "clamp": [0, 0.3], "coeff": -100}
+        ],
+        "clamp": [0, 100]
+      },
       "adjustmentGuide": {
-        "upward": "sampleExchanges show user gives precise corrections with code snippets even without reasoning keywords (shows, doesn't tell).",
+        "upward": "dimensionEvidence.feedback shows precise corrections with code snippets even without reasoning keywords (shows, doesn't tell).",
         "downward": "Corrections are specific but never explain why — AI can't learn from the feedback."
       }
     },
@@ -107,8 +142,8 @@
       "name": {"en": "Toolcraft", "zh": "工具力"},
       "shortName": {"en": "Tools", "zh": "工具"},
       "description": {
-        "en": "Do you reach beyond Edit/Bash/Read when the project benefits from it — Skills, MCP, Subagents, Plan mode, custom commands. Not using advanced tools is fine; using them poorly is what hurts.",
-        "zh": "需要时你会不会用 Edit/Bash/Read 之外的工具 — Skill、MCP、Subagent、Plan 模式、自定义命令。不用高级工具不扣分；用了但用不好才扣分。"
+        "en": "Do you reach beyond Edit/Bash/Read when the project benefits from it — Skills, MCP, Subagents, Workflow orchestration, background tasks, Plan mode, custom commands. Not using advanced tools is fine; using them poorly is what hurts.",
+        "zh": "需要时你会不会用 Edit/Bash/Read 之外的杠杆 — Skill、MCP、Subagent、Workflow 编排、后台任务、Plan 模式、自定义命令。不用高级工具不扣分；用了但用不好才扣分。"
       },
       "primaryPosition": "global",
       "signals": [
@@ -117,13 +152,33 @@
         "toolcraftSummary.subagentCalls",
         "toolcraftSummary.planModeEntries",
         "toolcraftSummary.customCommands",
-        "toolUsage.byCategory.todo"
+        "toolcraftSummary.orchestration.workflowRuns",
+        "toolcraftSummary.orchestration.parallelToolBursts",
+        "toolcraftSummary.orchestration.backgroundTasks",
+        "toolcraftSummary.byCategory.todo"
       ],
-      "baselineFormula": "60 + min(toolcraftSummary.skillsUsed.length, 5) * 5 + min(toolcraftSummary.mcpServers.length, 4) * 4 + clamp(toolcraftSummary.subagentCalls / max(stats.validSessions, 1), 0, 2) * 6 + (toolcraftSummary.planModeEntries > 0 ? 5 : 0) + min(toolcraftSummary.customCommands.length, 3) * 3 + clamp(toolUsage.byCategory.todo / max(stats.humanMessages, 1), 0, 0.3) * 20, clamped [0, 100]",
-      "scoringPhilosophy": "Baseline 60 (B) assumes basic competence with Edit/Bash/Read — that is honest, not punitive. Advanced tools (Skill/MCP/Subagent/Plan/CustomCmd) add bonuses on top. Absence of advanced tool use is NOT a penalty.",
+      "baselineFormula": "60 + min(skills,5)*5 + min(mcpServers,4)*4 + clamp(subagentCalls/sessions,0,2)*6 + (planMode>0?5:0) + min(customCommands,3)*3 + clamp(todo/humanMsgs,0,0.3)*20 + min(workflowRuns,2)*5 + (backgroundTasks>0?4:0) + clamp(parallelBursts/sessions,0,1)*6 + (cronJobs>0?3:0) + (worktreeUses>0?3:0), clamped [0, 100]",
+      "baselineTerms": {
+        "base": 60,
+        "terms": [
+          {"kind": "countCap", "signal": "toolcraftSummary.skillsUsed", "cap": 5, "coeff": 5},
+          {"kind": "countCap", "signal": "toolcraftSummary.mcpServers", "cap": 4, "coeff": 4},
+          {"kind": "perClamp", "num": "toolcraftSummary.subagentCalls", "den": "stats.validSessions", "clamp": [0, 2], "coeff": 6},
+          {"kind": "threshold", "signal": "toolcraftSummary.planModeEntries", "gt": 0, "coeff": 5},
+          {"kind": "countCap", "signal": "toolcraftSummary.customCommands", "cap": 3, "coeff": 3},
+          {"kind": "perClamp", "num": "toolcraftSummary.byCategory.todo", "den": "stats.humanMessages", "clamp": [0, 0.3], "coeff": 20},
+          {"kind": "countCap", "signal": "toolcraftSummary.orchestration.workflowRuns", "cap": 2, "coeff": 5},
+          {"kind": "threshold", "signal": "toolcraftSummary.orchestration.backgroundTasks", "gt": 0, "coeff": 4},
+          {"kind": "perClamp", "num": "toolcraftSummary.orchestration.parallelToolBursts", "den": "stats.validSessions", "clamp": [0, 1], "coeff": 6},
+          {"kind": "threshold", "signal": "toolcraftSummary.orchestration.cronJobs", "gt": 0, "coeff": 3},
+          {"kind": "threshold", "signal": "toolcraftSummary.orchestration.worktreeUses", "gt": 0, "coeff": 3}
+        ],
+        "clamp": [0, 100]
+      },
+      "scoringPhilosophy": "Baseline 60 (B) assumes basic competence with Edit/Bash/Read — that is honest, not punitive. Advanced tools (Skill/MCP/Subagent/Workflow/Plan/CustomCmd/background/cron/worktree) add bonuses on top. Absence of advanced tool use is NOT a penalty.",
       "adjustmentGuide": {
-        "upward": "User chains advanced tools effectively (skill → subagent → custom command) AND the chained workflow corresponds to clean completion (no retry loops triggered afterward). Plan mode entries that led to substantive multi-file edits. Subagent usage with non-trivial result counts.",
-        "downward": "Advanced tools invoked but workflow stalls afterward — e.g. subagents that triggered retry loops, plan mode entered then abandoned. Custom commands invoked but no follow-through work. This is 'tool theater' — using fancy tools without leverage."
+        "upward": "User chains advanced tools effectively (skill → subagent → workflow) AND the chained workflow corresponds to clean completion. Plan mode entries that led to substantive multi-file edits. Orchestration with non-trivial fan-out (parallelToolBursts, workflowRuns).",
+        "downward": "Advanced tools invoked but workflow stalls afterward — e.g. subagents that triggered retry loops, plan mode entered then abandoned. This is 'tool theater' — using fancy tools without leverage."
       }
     },
     "architecture": {
@@ -131,25 +186,48 @@
       "name": {"en": "Architecture", "zh": "架构力"},
       "shortName": {"en": "Arch", "zh": "架构"},
       "description": {
-        "en": "Have you set the project up for repeatable AI collaboration — CLAUDE.md, memory, custom agents, settings.",
-        "zh": "你的项目是否为可重复的 AI 协作做了铺垫 — CLAUDE.md、memory、自定义 agent、settings。"
+        "en": "Have you set the project up for repeatable AI collaboration — CLAUDE.md, .mcp.json, hooks, skills, memory, custom agents, settings.",
+        "zh": "你的项目是否为可重复的 AI 协作做了铺垫 — CLAUDE.md、.mcp.json、hooks、skills、memory、自定义 agent、settings。"
       },
       "primaryPosition": "global",
       "signals": [
         "projectAssets.hasClaudeMd",
         "projectAssets.claudeMdSize",
+        "projectAssets.hasMcpJson",
+        "projectAssets.settingsHookCount",
+        "projectAssets.hasSkillsDir",
         "projectAssets.hasMemoryDir",
-        "projectAssets.memoryFileCount",
         "projectAssets.hasAgentsDir",
-        "projectAssets.agentCount",
         "projectAssets.hasCommandsDir",
-        "projectAssets.commandCount",
-        "projectAssets.hasSettingsJson"
+        "projectAssets.hasSettingsJson",
+        "projectAssets.hasAgentsMd"
       ],
-      "baselineFormula": "40 + (projectAssets.hasClaudeMd ? 20 : 0) + (projectAssets.claudeMdSize > 500 ? 10 : 0) + (projectAssets.hasMemoryDir ? 8 : 0) + min(projectAssets.memoryFileCount, 5) * 2 + (projectAssets.hasAgentsDir ? 6 : 0) + min(projectAssets.agentCount, 4) * 2 + (projectAssets.hasCommandsDir ? 5 : 0) + min(projectAssets.commandCount, 3) * 2 + (projectAssets.hasSettingsJson ? 5 : 0), clamped [0, 100]",
+      "baselineFormula": "40 + (hasClaudeMd?20) + (claudeMdSize>500?10) + (hasMemoryDir?8) + min(memoryFiles,5)*2 + (hasAgentsDir?6) + min(agents,4)*2 + (hasCommandsDir?5) + min(commands,3)*2 + (hasSettingsJson?5) + (hasMcpJson?8) + (hasAgentsMd?5) + (hasSkillsDir?5) + min(skillDirs,3)*2 + min(hookEvents,3)*2 + (hasClaudeLocalMd?3), clamped [0, 100]",
+      "baselineTerms": {
+        "base": 40,
+        "terms": [
+          {"kind": "flag", "signal": "projectAssets.hasClaudeMd", "coeff": 20},
+          {"kind": "threshold", "signal": "projectAssets.claudeMdSize", "gt": 500, "coeff": 10},
+          {"kind": "flag", "signal": "projectAssets.hasMemoryDir", "coeff": 8},
+          {"kind": "countCap", "signal": "projectAssets.memoryFileCount", "cap": 5, "coeff": 2},
+          {"kind": "flag", "signal": "projectAssets.hasAgentsDir", "coeff": 6},
+          {"kind": "countCap", "signal": "projectAssets.agentCount", "cap": 4, "coeff": 2},
+          {"kind": "flag", "signal": "projectAssets.hasCommandsDir", "coeff": 5},
+          {"kind": "countCap", "signal": "projectAssets.commandCount", "cap": 3, "coeff": 2},
+          {"kind": "flag", "signal": "projectAssets.hasSettingsJson", "coeff": 5},
+          {"kind": "flag", "signal": "projectAssets.hasMcpJson", "coeff": 8},
+          {"kind": "flag", "signal": "projectAssets.hasAgentsMd", "coeff": 5},
+          {"kind": "flag", "signal": "projectAssets.hasSkillsDir", "coeff": 5},
+          {"kind": "countCap", "signal": "projectAssets.skillDirCount", "cap": 3, "coeff": 2},
+          {"kind": "countCap", "signal": "projectAssets.settingsHookCount", "cap": 3, "coeff": 2},
+          {"kind": "flag", "signal": "projectAssets.hasClaudeLocalMd", "coeff": 3}
+        ],
+        "clamp": [0, 100]
+      },
       "applicabilityRule": "If projectAssets.cwdResolved is false, mark this dimension as N/A — filesystem inspection not possible.",
+      "applicabilityCondition": {"path": "projectAssets.cwdResolved", "op": "eq", "value": false},
       "adjustmentGuide": {
-        "upward": "CLAUDE.md is genuinely informative (large, project-specific) — not just a stub. Memory entries reflect real ongoing context.",
+        "upward": "CLAUDE.md is genuinely informative (large, project-specific) — not just a stub. Memory entries reflect real ongoing context. Hooks wired to real verification (lint/test).",
         "downward": "CLAUDE.md exists but is a stub (< 500 bytes) or generic — counted only at the baseline level."
       }
     },
@@ -158,8 +236,8 @@
       "name": {"en": "Tempo", "zh": "节奏感"},
       "shortName": {"en": "Tempo", "zh": "节奏"},
       "description": {
-        "en": "Do you control the conversation tempo — milestones, summaries, topic focus, sensible scope per turn.",
-        "zh": "你掌控对话节奏的能力 — 设里程碑、控话题、做总结、单轮范围合理。"
+        "en": "Do you control the conversation tempo — milestones, summaries, focused sessions, sensible scope per session.",
+        "zh": "你掌控对话节奏的能力 — 设里程碑、控话题、做总结、会话范围合理。"
       },
       "primaryPosition": "global",
       "signals": [
@@ -168,9 +246,24 @@
         "labelRatios.progressive",
         "patterns.topicDrifts",
         "patterns.demandOverloads",
+        "patterns.compactionCount",
         "stats.validSessions"
       ],
-      "baselineFormula": "50 + (labelRatios.summary - 0.05) * 100 + (labelRatios.milestone - 0.05) * 80 - clamp(patterns.topicDrifts / max(stats.validSessions, 1), 0, 5) * 8 - clamp(patterns.demandOverloads / max(stats.humanMessages, 1), 0, 0.3) * 100 + (labelRatios.progressive - 0.1) * 60 + clamp(stats.validSessions / 20, 0, 1) * 8, clamped [0, 100]",
+      "baselineFormula": "50 + (summary - 0.05) * 100 + (milestone - 0.05) * 80 - clamp(topicDrifts/sessions, 0, 3) * 8 - clamp(demandOverloads/humanMsgs, 0, 0.3) * 100 + (progressive - 0.1) * 60 + clamp(sessions/20, 0, 1) * 8 - clamp(compactions/sessions, 0, 1.5) * 8, clamped [0, 100]",
+      "baselineTerms": {
+        "base": 50,
+        "terms": [
+          {"kind": "pivot", "signal": "labelRatios.summary", "pivot": 0.05, "coeff": 100},
+          {"kind": "pivot", "signal": "labelRatios.milestone", "pivot": 0.05, "coeff": 80},
+          {"kind": "perClamp", "num": "patterns.topicDrifts", "den": "stats.validSessions", "clamp": [0, 3], "coeff": -8},
+          {"kind": "perClamp", "num": "patterns.demandOverloads", "den": "stats.humanMessages", "clamp": [0, 0.3], "coeff": -100},
+          {"kind": "pivot", "signal": "labelRatios.progressive", "pivot": 0.1, "coeff": 60},
+          {"kind": "ratioClamp", "signal": "stats.validSessions", "div": 20, "clamp": [0, 1], "coeff": 8},
+          {"kind": "perClamp", "num": "patterns.compactionCount", "den": "stats.validSessions", "clamp": [0, 1.5], "coeff": -8}
+        ],
+        "clamp": [0, 100]
+      },
+      "scoringPhilosophy": "Calibrated for the autonomous-agent era: a complete, structured multi-item brief is good batching, NOT overload (the parser only counts unstructured cramming). Sessions that repeatedly outgrow the context window (compactions) indicate scope-per-session worth improving.",
       "adjustmentGuide": {
         "upward": "sessionFlows show clean arcs (setup → build → verify → close) even without explicit 'summary' or 'milestone' keywords.",
         "downward": "User writes recaps but sessions still sprawl — summaries without actual convergence."
@@ -192,8 +285,19 @@
         "outcomeTotals.filesPerHumanMsg",
         "patterns.retryLoops"
       ],
-      "baselineFormula": "50 + clamp(outcomeTotals.toolsPerHumanMsg / 3, 0, 1) * 25 + clamp(outcomeTotals.editsPerHumanMsg / 1.5, 0, 1) * 20 + clamp(outcomeTotals.filesPerHumanMsg / 0.5, 0, 1) * 15 - clamp(patterns.retryLoops / max(stats.validSessions, 1), 0, 1) * 20, clamped [0, 100]",
+      "baselineFormula": "50 + clamp(toolsPerHumanMsg / 3, 0, 1) * 25 + clamp(editsPerHumanMsg / 1.5, 0, 1) * 20 + clamp(filesPerHumanMsg / 0.5, 0, 1) * 15 - clamp(retryLoops / max(validSessions, 1), 0, 1) * 20, clamped [0, 100]",
+      "baselineTerms": {
+        "base": 50,
+        "terms": [
+          {"kind": "ratioClamp", "signal": "outcomeTotals.toolsPerHumanMsg", "div": 3, "clamp": [0, 1], "coeff": 25},
+          {"kind": "ratioClamp", "signal": "outcomeTotals.editsPerHumanMsg", "div": 1.5, "clamp": [0, 1], "coeff": 20},
+          {"kind": "ratioClamp", "signal": "outcomeTotals.filesPerHumanMsg", "div": 0.5, "clamp": [0, 1], "coeff": 15},
+          {"kind": "perClamp", "num": "patterns.retryLoops", "den": "stats.validSessions", "clamp": [0, 1], "coeff": -20}
+        ],
+        "clamp": [0, 100]
+      },
       "applicabilityRule": "If projectProfile.type is 'learning', this dimension is N/A — Q&A projects intentionally have low edit ratios.",
+      "applicabilityCondition": {"path": "projectProfile.type", "op": "in", "value": ["learning"]},
       "adjustmentGuide": {
         "upward": "sessionOutcomes show a session that closed a bug in 1-3 messages with multiple file edits — silent expert efficiency.",
         "downward": "High tool use but low distinct-files-touched — busywork pattern, not real progress."
@@ -212,12 +316,21 @@
         "patterns.blindAccepts",
         "labelRatios.requestTest",
         "labelRatios.thinkFirst",
-        "labelRatios.proactiveReview",
-        "confirming.ratios.proactiveReview"
+        "labelRatios.proactiveReview"
       ],
-      "baselineFormula": "50 - (patterns.blindAccepts / max(stats.humanMessages, 1)) * 200 + (labelRatios.requestTest - 0.05) * 120 + (labelRatios.thinkFirst - 0.05) * 100 + (labelRatios.proactiveReview - 0.1) * 80, clamped [0, 100]",
+      "baselineFormula": "50 - (blindAccepts / max(humanMessages, 1)) * 200 + (requestTest - 0.05) * 120 + (thinkFirst - 0.05) * 100 + (proactiveReview - 0.1) * 80, clamped [0, 100]",
+      "baselineTerms": {
+        "base": 50,
+        "terms": [
+          {"kind": "perPivot", "num": "patterns.blindAccepts", "den": "stats.humanMessages", "pivot": 0, "coeff": -200},
+          {"kind": "pivot", "signal": "labelRatios.requestTest", "pivot": 0.05, "coeff": 120},
+          {"kind": "pivot", "signal": "labelRatios.thinkFirst", "pivot": 0.05, "coeff": 100},
+          {"kind": "pivot", "signal": "labelRatios.proactiveReview", "pivot": 0.1, "coeff": 80}
+        ],
+        "clamp": [0, 100]
+      },
       "adjustmentGuide": {
-        "upward": "User runs their own tests outside the conversation (pastes results back), or reviews AI diffs before accepting — invisible verification.",
+        "upward": "User runs their own tests outside the conversation (pastes results back), reviews AI diffs before accepting, or has built self-verification into the workflow (hooks running lint/test) — invisible verification.",
         "downward": "High proactiveReview ratio but always accepts anyway after AI answers — performative checking."
       }
     },
@@ -236,8 +349,19 @@
         "patterns.retryLoops",
         "labelRatios.hasCompletion"
       ],
-      "baselineFormula": "50 + (outcomeTotals.cleanEndRatio - 0.5) * 60 + (outcomeTotals.sessionsWithCompletionSignal / max(stats.validSessions, 1) - 0.3) * 50 - clamp(patterns.retryLoops / max(stats.validSessions, 1), 0, 1) * 15 + (labelRatios.hasCompletion - 0.05) * 80, clamped [0, 100]",
+      "baselineFormula": "50 + (cleanEndRatio - 0.5) * 60 + (sessionsWithCompletionSignal / max(validSessions, 1) - 0.3) * 50 - clamp(retryLoops / max(validSessions, 1), 0, 1) * 15 + (hasCompletion - 0.05) * 80, clamped [0, 100]",
+      "baselineTerms": {
+        "base": 50,
+        "terms": [
+          {"kind": "pivot", "signal": "outcomeTotals.cleanEndRatio", "pivot": 0.5, "coeff": 60},
+          {"kind": "perPivot", "num": "outcomeTotals.sessionsWithCompletionSignal", "den": "stats.validSessions", "pivot": 0.3, "coeff": 50},
+          {"kind": "perClamp", "num": "patterns.retryLoops", "den": "stats.validSessions", "clamp": [0, 1], "coeff": -15},
+          {"kind": "pivot", "signal": "labelRatios.hasCompletion", "pivot": 0.05, "coeff": 80}
+        ],
+        "clamp": [0, 100]
+      },
       "applicabilityRule": "If projectProfile.type is 'one-shot' or 'learning', this dimension is N/A — closure semantics don't apply.",
+      "applicabilityCondition": {"path": "projectProfile.type", "op": "in", "value": ["one-shot", "learning"]},
       "adjustmentGuide": {
         "upward": "sessionOutcomes show consistent completion signals AND no retry loops — work actually shipped.",
         "downward": "Sessions trail off without resolution (user disappears mid-thread, no acknowledgment of final state)."
@@ -246,17 +370,17 @@
   },
 
   "scoring": {
-    "method": "baseline + adjustment",
-    "baselineSource": "deterministic formula from facts.json signals",
+    "method": "deterministic baseline (compute-baselines.mjs) + bounded Claude adjustment",
+    "baselineSource": "baselineTerms evaluated deterministically by compute-baselines.mjs — zero run-to-run variance",
     "adjustmentRange": [-15, 15],
-    "adjustmentRequirement": "Must cite specific keyMessages or sampleExchanges evidence in reasoning. No adjustment without evidence.",
+    "adjustmentRequirement": "Must cite specific keyMessages / sampleExchanges / dimensionEvidence in reasoning. No adjustment without evidence.",
     "confidenceScaling": {
       "low": "All baseline scores shrink toward 50 (score = 50 + (baseline - 50) * 0.75). Show 'limited data' note in report.",
       "medium": "Mild shrinkage (score = 50 + (baseline - 50) * 0.9).",
       "high": "No scaling applied."
     },
     "naHandling": {
-      "rule": "Per applicabilityRule on each dimension, plus projectProfile.naDimensions. N/A dimensions have score=null, grade=null, applicable=false. Excluded from overall and category averages.",
+      "rule": "Per applicabilityCondition on each dimension, plus projectProfile.naDimensions. N/A dimensions have score=null, grade=null, applicable=false. Excluded from overall and category averages.",
       "displayLabel": {"en": "N/A for {profile}", "zh": "{profile} 不适用"}
     },
     "categoryScore": "Average of applicable dimensions in the category, rounded.",
@@ -357,7 +481,7 @@
       }
     ],
     "constraints": [
-      "Every claim must cite evidence from keyMessages, sampleExchanges, sessionFlows, or toolcraftSummary.",
+      "Every claim must cite evidence from keyMessages, sampleExchanges, sessionFlows, dimensionEvidence, or toolcraftSummary.",
       "No fortune-teller tone. Describe observable behavior, not personality.",
       "Bilingual parity (en/zh) — same meaning, not literal translation."
     ]
@@ -365,6 +489,13 @@
 
   "suggestions": {
     "count": "MINIMUM 5, maximum 7. Never fewer than 5, even for high-scoring users.",
+    "source": "Instantiate from candidateMoves (playbook moves whose trigger conditions matched this project's facts — see data/playbook.json). Personalize each with dimensionEvidence / keyMessages. Only invent a non-playbook suggestion when candidates can't cover a required high-priority gap.",
+    "actionTypes": {
+      "prompt": "A pastable prompt to use in the next session.",
+      "habit": "A recurring behavior change, still anchored by a pastable prompt.",
+      "setup": "A persistent asset to install (CLAUDE.md section, command file, hook, .mcp.json entry) — ships with assetContent.",
+      "orchestration": "A platform-leverage move (subagents, workflow, background, plan mode) with a concrete pastable ask."
+    },
     "priorityMapping": {
       "D (0-39)": "high (required)",
       "C (40-54)": "high (required)",
@@ -375,23 +506,26 @@
     "highScorerFillSources": [
       "Within strong dimensions — push from 82 → 90+ with a 'next-level' habit.",
       "Cross-pollinate — apply a habit working in one dim to a weaker one.",
-      "Platform leverage — suggest Skill/MCP/Subagent moves tied to actual workflow.",
+      "Platform leverage — suggest Skill/MCP/Subagent/Workflow moves tied to actual workflow.",
       "Process habits — recap, milestone, session scoping discipline.",
       "Risk reduction — even strong scoring may hide brittleness (e.g. all skill in head, none in CLAUDE.md)."
     ],
     "required": [
       "dimensionId",
       "priority (high/medium/low)",
+      "actionType (prompt/habit/setup/orchestration)",
       "title (bilingual, < 18 chars)",
       "body (bilingual, 1-2 sentences, specific)",
       "evidence (bilingual, 1 sentence quoting/paraphrasing real session content)",
       "promptRewrite (bilingual, a concrete pastable prompt the user can try next time)",
-      "expectedImpact (bilingual, e.g. '+12 Proof Check')"
+      "expectedImpact (bilingual, e.g. '+12 Proof Check')",
+      "assetContent (setup moves only: the ready-to-install file content, from the playbook template)"
     ],
     "principles": [
       "Avoid empty platitudes. Don't say 'verify more' — say 'next time AI gives you code, ask it to explain the reasoning before you run it.'",
       "Sort: high → medium → low; within priority, by impact scope (largest first).",
-      "Every suggestion (including low-priority level-up moves) must be specific, evidence-grounded, and ship with a usable promptRewrite."
+      "Every suggestion (including low-priority level-up moves) must be specific, evidence-grounded, and ship with a usable promptRewrite.",
+      "Setup suggestions must include assetContent the user can install by pasting one instruction to Claude."
     ]
   }
 }

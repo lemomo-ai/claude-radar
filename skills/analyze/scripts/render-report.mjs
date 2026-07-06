@@ -47,8 +47,9 @@ try {
   process.exit(1);
 }
 
-// Sanitize: escape </script> inside the JSON so it can't break out of the <script> tag
-const safeJson = JSON.stringify(report).replace(/<\/script/gi, '<\\/script');
+// Sanitize: escape every "<" as < (valid JSON and JS) so the payload can
+// never break out of the <script> tag (</script>, <!--, etc.).
+const safeJson = JSON.stringify(report).replace(/</g, '\\u003c');
 
 const html = template.replace('{{REPORT_DATA}}', safeJson);
 
@@ -84,6 +85,22 @@ const outName = `${slug}-${timestamp()}.html`;
 const outPath = path.join(reportsDir, outName);
 
 fs.writeFileSync(outPath, html, 'utf-8');
+
+// Archive the report JSON to history — compute-baselines.mjs reads the latest
+// entry on the next run to build the "Since last check-up" comparison.
+try {
+  const historySlug = report.projectSlug || slug;
+  const historyDir = path.join(os.homedir(), '.claude-radar', 'history', historySlug);
+  fs.mkdirSync(historyDir, { recursive: true });
+  fs.writeFileSync(path.join(historyDir, `${timestamp()}.json`), JSON.stringify(report, null, 2), 'utf-8');
+  // Keep the 10 most recent snapshots
+  const snapshots = fs.readdirSync(historyDir).filter(f => f.endsWith('.json')).sort();
+  for (const old of snapshots.slice(0, Math.max(0, snapshots.length - 10))) {
+    fs.unlinkSync(path.join(historyDir, old));
+  }
+} catch (e) {
+  process.stderr.write(`[claude-radar] history archive skipped: ${e.message}\n`);
+}
 
 // Open in browser (cross-platform)
 function openFile(filePath) {

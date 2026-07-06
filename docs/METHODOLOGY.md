@@ -27,22 +27,31 @@
 ~/.claude/projects/<slug>/*.jsonl
          │
          ▼
-   [parse-project.mjs]           ← Deterministic. Position-aware signals + tool/skill/MCP/CLAUDE.md detection.
-         │ facts.json (schemaVersion 2.0)
+   [parse-project.mjs]           ← Deterministic. Filters injected content (compaction summaries,
+         │                          subagent side-chains). Position-aware signals + tool/skill/MCP/
+         │                          orchestration/CLAUDE.md detection + dimension-targeted evidence.
+         │ facts.json (schemaVersion 2.1)
          ▼
-    [Claude in the skill]        ← Reads rubric.json. Two-layer: scoring + diagnosis.
-         │ report.json (schemaVersion 2.0)
+   [compute-baselines.mjs]       ← Deterministic. Evaluates rubric.json baselineTerms, applies N/A
+         │                          rules + confidence scaling, matches playbook.json triggers,
+         │                          loads the previous report for comparison.
+         │ scoring packet
+         ▼
+    [Claude in the skill]        ← Bounded ±15 evidence-cited adjustment + diagnosis + suggestion
+         │                          instantiation. Claude never does baseline arithmetic.
+         │ report.json (schemaVersion 2.1)
          ▼
    [render-report.mjs]           ← Pure transform. JSON + template → HTML dashboard.
-         │
+         │                          Archives report JSON to ~/.claude-radar/history/<slug>/.
          ▼
   ~/.claude-radar/reports/<slug>-<ts>.html
 ```
 
-Three clearly separated stages:
+Four clearly separated stages:
 
-- **Parser** — deterministic. Same input → same facts. Now also detects tool usage by category (Skill, MCP, Subagent, Plan mode, custom commands), CLAUDE.md / memory / agents / settings.json presence, per-session outcomes, and auto-classifies the project profile.
-- **Scorer + Diagnoser** — Claude, running inside your Claude Code session. Computes a **formula baseline** from signals, applies **density-based confidence scaling**, applies a **bounded qualitative adjustment** (±15 points max), and then independently produces a **free-form diagnosis layer**.
+- **Parser** — deterministic. Same input → same facts. Filters machine-injected content (compaction continuations, subagent side-chains, command echoes) so evidence reflects what *you* actually wrote. Detects tool usage by category — including the orchestration layer (Workflow runs, parallel tool bursts, background tasks, cron, worktrees) — plus slash commands, CLAUDE.md / .mcp.json / hooks / skills / memory / agents presence, per-session outcomes, tech stack, and dimension-targeted evidence moments. Auto-classifies the project profile.
+- **Baseline engine** — deterministic. All formula arithmetic happens in script, not in the LLM. Same facts → byte-identical baselines, every run. Also evaluates the suggestion playbook's trigger conditions and loads your previous report for the "since last check-up" comparison.
+- **Adjuster + Diagnoser** — Claude, running inside your Claude Code session. Applies a **bounded qualitative adjustment** (±15 points max, evidence-cited or zero), produces the **free-form diagnosis layer**, and personalizes trigger-matched playbook moves into suggestions.
 - **Renderer** — produces a single HTML dashboard with data, styles, and JS all inlined.
 
 No external API calls. No cloud processing. No server.
@@ -119,15 +128,17 @@ Each Communication dimension reads signals **only from its designated position**
 
 Applied to all 9 dimensions:
 
-1. **Formula baseline** (deterministic): plug facts values into the formula in `rubric.json`. Result clamped to [0, 100].
-2. **Density-based confidence scaling**: see §8.
-3. **Claude adjustment** (bounded ±15): must cite evidence from `keyMessages`, `sampleExchanges`, `sessionFlows`, `toolcraftSummary`, etc. No evidence → no adjustment.
+1. **Formula baseline** (deterministic, computed by `compute-baselines.mjs`): the structured `baselineTerms` in `rubric.json` are evaluated in script. Result clamped to [0, 100]. The LLM never does this arithmetic — baseline variance is exactly zero.
+2. **Density-based confidence scaling** (also in script): see §8.
+3. **Claude adjustment** (bounded ±15): must cite evidence from `dimensionEvidence`, `keyMessages`, `sampleExchanges`, `sessionFlows`, `toolcraftSummary`, etc. No evidence → no adjustment.
 
 ```
-finalScore = clamp(adjustedBaseline + claudeAdjustment, 0, 100)
+finalScore = clamp(scaledBaseline + claudeAdjustment, 0, 100)
 ```
 
 **The "Silent Expert" pattern** is still recognized — short messages with high precision (`<100 chars` containing file path + identifier + action) get upward adjustments via the adjustment guide.
+
+**Dimension-targeted evidence.** The parser extracts up to a handful of concrete "moments" per dimension — the actual text of a vague directive, a blind accept together with what the assistant had just done, a bare correction, a compaction event, an unclean session ending. Adjustments and suggestions cite these real moments instead of abstract ratios.
 
 ---
 
@@ -166,10 +177,17 @@ baseline = 60                                              // basic-user floor =
   + (planModeEntries > 0 ? 5 : 0)                          // +5 for any Plan use
   + min(customCommands.length, 3) × 3                      // up to +9 for custom commands
   + clamp(todoToolUse / humanMsgs, 0, 0.3) × 20            // up to +6 for todo tracking
+  + min(workflowRuns, 2) × 5                               // up to +10 for Workflow orchestration
+  + (backgroundTasks > 0 ? 4 : 0)                          // +4 for backgrounding long tasks
+  + clamp(parallelToolBursts / sessions, 0, 1) × 6         // up to +6 for parallel fan-out
+  + (cronJobs > 0 ? 3 : 0)                                 // +3 for scheduled automation
+  + (worktreeUses > 0 ? 3 : 0)                             // +3 for worktree isolation
 , clamped [0, 100]
 ```
 
-A user who only uses Edit/Bash/Read scores ~60 (B). A user who chains skill → subagent → custom command with Plan mode and Todo tracking scores 90+ (S). The Claude ±15 adjustment can pull a score down if advanced-tool usage triggered retry loops or sat unused after invocation ("tool theater").
+**The orchestration layer is first-class.** Workflow runs, parallel tool bursts (reconstructed from entries sharing one message id), background tasks (`run_in_background`), cron/scheduled jobs, and worktree isolation are all detected — the highest-leverage platform usage no longer falls into an invisible `other` bucket. Slash commands are captured from `<command-name>` records (built-in commands like `/model` are excluded; plugin skills and custom commands count).
+
+A user who only uses Edit/Bash/Read scores ~60 (B). A user who chains skill → subagent → workflow with Plan mode scores 90+ (S). The Claude ±15 adjustment can pull a score down if advanced-tool usage triggered retry loops or sat unused after invocation ("tool theater").
 
 ---
 
@@ -190,10 +208,16 @@ baseline = 40
   + (hasCommandsDir ? 5 : 0)
   + min(commandCount, 3) × 2
   + (hasSettingsJson ? 5 : 0)
+  + (hasMcpJson ? 8 : 0)                  // project-level MCP config
+  + (hasAgentsMd ? 5 : 0)                 // AGENTS.md cross-tool convention
+  + (hasSkillsDir ? 5 : 0)                // project skills
+  + min(skillDirCount, 3) × 2
+  + min(settingsHookCount, 3) × 2         // hook EVENTS configured (count only, values never read)
+  + (hasClaudeLocalMd ? 3 : 0)
 , clamped [0, 100]
 ```
 
-**Applicability rule:** if the project's working directory can't be located on the current machine, this dimension is N/A — filesystem inspection isn't possible without `cwd` access.
+**Applicability rule:** if the project's working directory can't be located on the current machine, this dimension is N/A — filesystem inspection isn't possible without `cwd` access. The working directory is resolved as the **most frequent** `cwd` recorded across the project's sessions (ties break toward the shortest path), so sessions launched from deep subdirectories can't hijack asset detection.
 
 ---
 
@@ -235,6 +259,17 @@ baseline = 50
 
 ---
 
+## Calibrated for the autonomous-agent era
+
+Several detectors were re-calibrated so the rubric rewards 2026-era best practice instead of 2024-era drip-feeding:
+
+- **Structured batching is good.** A complete multi-task brief with numbering/priorities/sequencing is NOT a "demand overload" — only unstructured cramming (3+ actions, >300 chars, no list/sequencing) counts against Tempo.
+- **"继续 / continue" nudges are not retry loops.** Only 3+ near-identical *substantive* messages (≥30 chars) count as hitting a wall.
+- **Plan approvals aren't blind accepts.** A short "yes/好的" answering `AskUserQuestion` or approving a plan is required confirmation flow and is exempt from the blind-accept counter.
+- **Compactions are a Tempo signal.** Sessions that repeatedly outgrow the context window (`compactionCount / sessions`) indicate scope-per-session worth improving — a mild Tempo penalty and a targeted suggestion, not a hidden distortion of the evidence pool (continuation summaries are filtered from analysis and counted separately).
+
+---
+
 ## Diagnosis layer
 
 Independent of scoring. Produces three pieces:
@@ -266,37 +301,57 @@ Examples:
 
 ---
 
-## Suggestion specification (5-7, with prompt rewrites)
+## Suggestion specification (5-7, playbook-driven, with installable assets)
 
-**Minimum 5 suggestions, always.** Even for high-scoring users — instead of corrective suggestions, generate "level-up moves" from these sources: (a) push a strong dim from 82 → 90+, (b) cross-pollinate a working habit to a weaker dim, (c) suggest a Skill/MCP/Subagent move tied to actual workflow, (d) recap/milestone/scoping process habits, (e) risk reduction (e.g. "all your skill is in your head, not in CLAUDE.md").
+**Suggestions come from a playbook, not from improvisation.** `data/playbook.json` holds 30+ concrete "moves" across six domains — orchestration, MCP, persistence, verification loops, tempo, steering. Each move carries a structured **trigger condition** evaluated deterministically against your facts (e.g. *"no CLAUDE.md AND ≥5 sessions"*, *"≥10 subagent calls AND 0 workflow runs"*). Only triggered moves become candidates; Claude then selects 5-7 and **personalizes them with your real session evidence**. Depth comes from the playbook; specificity comes from your data. The playbook is open source — teams can add their own moves.
 
-Each suggestion now includes:
+**Minimum 5 suggestions, always** — even for high-scoring users, who get level-up moves: (a) push a strong dim from 82 → 90+, (b) cross-pollinate a working habit to a weaker dim, (c) a Skill/MCP/Subagent/Workflow move tied to actual workflow, (d) process habits, (e) risk reduction.
+
+Each suggestion includes:
 
 ```jsonc
 {
   "dimensionId": "verification",
   "priority": "high",
+  "actionType": "setup",              // prompt | habit | setup | orchestration
+  "playbookId": "hook-verification-loop",
   "title": { "en": "...", "zh": "..." },
   "body": { "en": "...", "zh": "..." },
-  "evidence": { "en": "Across 8 sessions...", "zh": "..." },
+  "evidence": { "en": "In session 151b7904 you accepted a 3-file refactor with 'ok' — one of 6 such moments.", "zh": "..." },
   "promptRewrite": { "en": "Before you write code, walk me through...", "zh": "..." },
+  "assetPath": ".claude/settings.json",              // setup moves only
+  "assetContent": "{ \"hooks\": { ... } }",           // setup moves only — ready to install
   "expectedImpact": { "en": "+10-15 Proof Check; minimal Efficiency cost.", "zh": "..." }
 }
 ```
 
+**`setup` suggestions ship the asset itself** — a ready-to-install CLAUDE.md section, hook config, `.mcp.json` entry, command file, or agent definition. The report renders it with a copy button and a one-line install instruction, so "advice" becomes a 10-second action.
+
 **Priority mapping:**
 
-| Score | Priority | Required? |
-|---|---|---|
-| 0-54 (D/C) | high | yes |
-| 55-69 (B) | medium | usually |
-| 70-84 (A) | low | only with specific gap |
-| 85-100 (S) | — | skip |
+| Score | Priority |
+|---|---|
+| 0-54 (D/C) | high (required) |
+| 55-69 (B) | medium (upgrade to high if clearly poor) |
+| 70-84 (A) | low (level-up move toward S) |
+| 85-100 (S) | low (refinement, or cross-pollinate to weaker dims) |
 
 **Quality bar:**
 - `promptRewrite` must be a concrete pastable string — not advice like "ask more questions"
 - `expectedImpact` should be honest about trade-offs ("+12 Proof Check, but might slow you down")
-- `evidence` must quote/paraphrase real session content
+- `evidence` must quote/paraphrase real session content (the parser's `dimensionEvidence` exists for exactly this)
+
+---
+
+## Since last check-up (longitudinal)
+
+Every rendered report is archived locally (`~/.claude-radar/history/<project>/`, last 10). On the next run, the baseline engine loads the previous report and the report shows:
+
+- **Score deltas** — overall and per dimension.
+- **Adopted moves** — mechanically detected where possible: CLAUDE.md created or grown, `.mcp.json` added, hooks configured, plan mode / MCP / workflows / custom commands newly in use.
+- **A short trajectory note.**
+
+This turns a one-shot check-up into a feedback loop: you can see whether last month's suggestions actually moved your scores.
 
 ---
 
@@ -328,7 +383,7 @@ We measure **collaboration behavior + engineering setup + outcome density**, not
 ## Known limitations
 
 1. **Small samples still mean wide error bars.** Density-based confidence mitigates over-shrinkage but doesn't eliminate uncertainty. Reports flag this in the profile section.
-2. **Scoring still has run-to-run variance** (~±3 points typical). The diagnosis layer is descriptive enough that minor score wiggles don't change the actionable takeaway.
+2. **Baselines have zero run-to-run variance** — they're computed in script. The only remaining variance is the bounded ±15 qualitative adjustment, and it must cite evidence or stay at zero. The diagnosis layer is descriptive enough that minor adjustment wiggles don't change the actionable takeaway.
 3. **Profile classification is heuristic.** A 4-session prototype might be classified as `feature-build` when the user thinks of it as `one-shot`. The rationale string explains *why* — and users can re-run after more sessions.
 4. **Architecture detection requires filesystem access.** If you run the analysis on a different machine than where the project lives, Architecture is N/A.
 5. **The rubric is opinionated.** We define strong AI collaboration as goal-directed + tool-fluent + verification-heavy + closure-oriented. Teams with different preferences can tune `rubric.json`.
@@ -353,18 +408,18 @@ We measure **collaboration behavior + engineering setup + outcome density**, not
 
 ## How to change the scoring
 
-Everything is in `data/rubric.json`:
+Scoring lives in `data/rubric.json`, suggestions in `data/playbook.json`:
 
-- **Change baseline formulas** — edit `dimensions.<dim>.baselineFormula`
+- **Change baseline formulas** — edit `dimensions.<dim>.baselineTerms` (structured, machine-evaluated; the `baselineFormula` string is human-readable documentation)
 - **Change category groupings** — edit `categories.<cat>.dimensionIds`
 - **Change profile weights / N/A rules** — edit `profiles.<profile>.categoryWeights` and `naDimensions`
-- **Change applicability rules** — edit `dimensions.<dim>.applicabilityRule`
+- **Change applicability rules** — edit `dimensions.<dim>.applicabilityCondition`
 - **Change grade thresholds** — edit `grades[*].range`
 - **Change confidence scaling** — edit `scoring.confidenceScaling`
 - **Change diagnosis spec** — edit `diagnosis.*`
-- **Change suggestion spec** — edit `suggestions.*`
+- **Add or tune suggestions** — edit `data/playbook.json`: each move is a trigger condition + bilingual copy + optional installable asset template. Community contributions welcome.
 
-No code changes needed. Claude re-reads `rubric.json` every run.
+No code changes needed. The scripts re-read both files every run. Run `node test/run.mjs` after editing to catch regressions.
 
 ---
 

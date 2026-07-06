@@ -27,23 +27,32 @@
 ~/.claude/projects/<slug>/*.jsonl
          │
          ▼
-   [parse-project.mjs]           ← 确定性。位置感知信号 + 工具/skill/MCP/CLAUDE.md 检测
-         │ facts.json (schemaVersion 2.0)
+   [parse-project.mjs]           ← 确定性。过滤注入内容（compaction 摘要、subagent 侧链）。
+         │                          位置感知信号 + 工具/skill/MCP/编排/CLAUDE.md 检测
+         │                          + 维度定向证据。
+         │ facts.json (schemaVersion 2.1)
          ▼
-    [Claude in the skill]        ← 读 rubric.json。两层：评分 + 诊断
-         │ report.json (schemaVersion 2.0)
+   [compute-baselines.mjs]       ← 确定性。执行 rubric.json baselineTerms、应用 N/A 规则
+         │                          + confidence 缩放、匹配 playbook.json 触发条件、
+         │                          加载上次报告用于对比。
+         │ scoring packet
          ▼
-   [render-report.mjs]           ← 纯转换。JSON + 模板 → HTML dashboard
-         │
+    [Claude in the skill]        ← 有界 ±15 引证微调 + 诊断 + 建议实例化。
+         │                          Claude 从不做基线算术。
+         │ report.json (schemaVersion 2.1)
+         ▼
+   [render-report.mjs]           ← 纯转换。JSON + 模板 → HTML dashboard。
+         │                          报告 JSON 归档到 ~/.claude-radar/history/<slug>/。
          ▼
   ~/.claude-radar/reports/<slug>-<ts>.html
 ```
 
-三阶段清晰分离：
+四阶段清晰分离：
 
-- **Parser** —— 确定性，相同输入相同输出。按类别统计工具调用（Skill / MCP / Subagent / Plan / 自定义命令）、CLAUDE.md / memory / agents / settings.json 检测、每个会话的产出指标、自动判别项目画像。
-- **Scorer + Diagnoser** —— 由你 Claude Code 会话里的 Claude 完成。先按公式算基线，再做密度驱动的 confidence 缩放，再做 ±15 微调，最后独立生成自由格式诊断。
-- **Renderer** —— 把 JSON 灌进 dashboard 模板，输出单文件 HTML。
+- **Parser** —— 确定性，相同输入相同 facts。过滤机器注入内容（compaction 续写摘要、subagent 侧链、命令回显），保证证据反映的是**你**真正写下的内容。按类别统计工具调用 —— 包括编排层（Workflow 运行、并行工具爆发、后台任务、cron、worktree）—— 加上斜杠命令、CLAUDE.md / .mcp.json / hooks / skills / memory / agents 检测、每个会话的产出指标、技术栈，以及维度定向的证据瞬间。自动判别项目画像。
+- **基线引擎** —— 确定性。所有公式算术都在脚本里完成，不在 LLM 里。相同 facts → 每次运行得到逐字节一致的基线。同时执行建议 playbook 的触发条件匹配，并加载上次报告用于"距上次体检"对比。
+- **Adjuster + Diagnoser** —— 由你 Claude Code 会话里的 Claude 完成。做**有界定性微调**（最多 ±15 分，必须引证据否则为零）、生成**自由格式诊断层**、把触发命中的 playbook 招式个性化成建议。
+- **Renderer** —— 把数据、样式、JS 全部内联，输出单文件 HTML dashboard。
 
 无外部 API。无云端处理。无服务器依赖。
 
@@ -119,15 +128,17 @@ Claude Radar 把每条用户消息归到 5 个位置之一再统计信号：
 
 应用到 9 个维度：
 
-1. **公式基线**（确定性）：把 facts 值代入 `rubric.json` 公式，结果 clamp 到 [0, 100]
-2. **密度驱动的 confidence 缩放**：见 §8
-3. **Claude 微调**（最多 ±15）：必须引用 `keyMessages` / `sampleExchanges` / `sessionFlows` / `toolcraftSummary` 等中的证据，无证据则不调整
+1. **公式基线**（确定性，由 `compute-baselines.mjs` 计算）：脚本执行 `rubric.json` 里结构化的 `baselineTerms`，结果 clamp 到 [0, 100]。LLM 从不做这套算术 —— 基线方差恰好为零
+2. **密度驱动的 confidence 缩放**（同样在脚本里）：见 §8
+3. **Claude 微调**（最多 ±15）：必须引用 `dimensionEvidence` / `keyMessages` / `sampleExchanges` / `sessionFlows` / `toolcraftSummary` 等中的证据，无证据则不调整
 
 ```
-finalScore = clamp(adjustedBaseline + claudeAdjustment, 0, 100)
+finalScore = clamp(scaledBaseline + claudeAdjustment, 0, 100)
 ```
 
 **"Silent Expert" 模式**仍然识别 —— `<100 字符`含文件路径 + 标识符 + 动作的精准短指令，通过 adjustment guide 上调。
+
+**维度定向证据。** parser 为每个维度抽取最多几条具体"瞬间" —— 一条模糊指令的原文、一次盲接受连同 assistant 刚做完的事、一句干巴巴的纠偏、一次 compaction 事件、一个没收干净的 session 结尾。微调和建议引用的是这些真实瞬间，而不是抽象比例。
 
 ---
 
@@ -166,10 +177,17 @@ baseline = 60                                              // 基础用户底线
   + (planModeEntries > 0 ? 5 : 0)                          // +5 用过 Plan
   + min(customCommands.length, 3) × 3                      // 最多 +9 自定义命令
   + clamp(todoToolUse / humanMsgs, 0, 0.3) × 20            // 最多 +6 todo 跟踪
+  + min(workflowRuns, 2) × 5                               // 最多 +10 Workflow 编排
+  + (backgroundTasks > 0 ? 4 : 0)                          // +4 长任务后台化
+  + clamp(parallelToolBursts / sessions, 0, 1) × 6         // 最多 +6 并行 fan-out
+  + (cronJobs > 0 ? 3 : 0)                                 // +3 定时自动化
+  + (worktreeUses > 0 ? 3 : 0)                             // +3 worktree 隔离
 , clamp [0, 100]
 ```
 
-只用 Edit/Bash/Read 大约 60 分（B）。skill→subagent→自定义命令链式用 + Plan + Todo 跟踪可以 90+（S）。Claude 的 ±15 微调可以下调高级工具用得差的情况 —— 调用了但触发 retry、Plan 进了又抛弃，这种"工具表演"会被识别。
+**编排层是一等公民。** Workflow 运行、并行工具爆发（通过共享同一 message id 的条目重建）、后台任务（`run_in_background`）、cron/定时任务、worktree 隔离全部会被检测 —— 杠杆最高的平台用法不再掉进不可见的 `other` 桶。斜杠命令从 `<command-name>` 条目捕获（`/model` 这类内置命令排除；plugin skill 和自定义命令计入）。
+
+只用 Edit/Bash/Read 大约 60 分（B）。skill→subagent→workflow 链式用 + Plan 模式可以 90+（S）。Claude 的 ±15 微调可以下调高级工具用得差的情况 —— 调用了但触发 retry、调了却闲置不用，这种"工具表演"会被识别。
 
 ---
 
@@ -190,10 +208,16 @@ baseline = 40
   + (hasCommandsDir ? 5 : 0)
   + min(commandCount, 3) × 2
   + (hasSettingsJson ? 5 : 0)
+  + (hasMcpJson ? 8 : 0)                  // 项目级 MCP 配置
+  + (hasAgentsMd ? 5 : 0)                 // AGENTS.md 跨工具约定
+  + (hasSkillsDir ? 5 : 0)                // 项目 skills
+  + min(skillDirCount, 3) × 2
+  + min(settingsHookCount, 3) × 2         // 配置的 hook 事件数（只数 key，从不读值）
+  + (hasClaudeLocalMd ? 3 : 0)
 , clamp [0, 100]
 ```
 
-**适用性规则**：项目工作目录在当前机器上定位不到时本维度标 N/A —— 不读文件系统就没法评。
+**适用性规则**：项目工作目录在当前机器上定位不到时本维度标 N/A —— 不读文件系统就没法评。工作目录按项目全部 session 里记录的 `cwd` **出现频次取众数**（并列时取最短路径），从深层子目录启动的 session 无法劫持资产检测。
 
 ---
 
@@ -235,6 +259,17 @@ baseline = 50
 
 ---
 
+## 自主 agent 时代的校准
+
+多个检测器经过重新校准，让 rubric 奖励的是 2026 年的最佳实践，而不是 2024 年的挤牙膏式喂任务：
+
+- **结构化批量交代是好事。** 带编号/优先级/顺序的完整多任务 brief 不算"需求过载"—— 只有无结构的硬塞（3+ 个动作、>300 字符、无列表无排序）才计入 Tempo 扣分。
+- **"继续 / continue" 类催促不算 retry loop。** 只有 3 次以上近乎相同的**实质性**消息（≥30 字符）才算撞墙。
+- **plan 确认不算盲接受。** 回答 `AskUserQuestion` 或批准 plan 的短句"yes/好的"是必需的确认流程，豁免于盲接受计数。
+- **compaction 是 Tempo 信号。** 反复撑爆上下文窗口的 session（`compactionCount / sessions`）说明单 session 范围值得改进 —— 对应一个温和的 Tempo 扣分和一条定向建议，而不是隐性扭曲证据池（续写摘要会被过滤出分析，单独计数）。
+
+---
+
 ## 诊断层
 
 独立于评分。产出三块：
@@ -266,9 +301,11 @@ baseline = 50
 
 ---
 
-## 建议规范（5-7 条，带 prompt 改写）
+## 建议规范（5-7 条，playbook 驱动，附可安装资产）
 
-**至少 5 条，永远不少于 5 条。** 即使高分用户也一样 —— 不是给"纠错"建议，而是从以下来源给 "level-up" 进阶动作：(a) 把强项从 82 推到 90+，(b) 把一个维度成功的习惯迁移到另一个维度，(c) 针对实际 workflow 推荐一个 Skill/MCP/Subagent 动作，(d) recap/milestone/scoping 的流程习惯，(e) 风险减少（比如"你的本事都在脑子里，没写进 CLAUDE.md"）。
+**建议来自 playbook，不靠即兴发挥。** `data/playbook.json` 收录 30+ 个具体"招式"，覆盖六个领域 —— 编排、MCP、持久化、验证闭环、节奏、纠偏。每个招式带一个结构化**触发条件**，由脚本对你的 facts 做确定性求值（例如*"没有 CLAUDE.md 且 ≥5 个 session"*、*"subagent 调用 ≥10 次且 workflow 运行为 0"*）。只有触发命中的招式才成为候选；Claude 再从中选出 5-7 条，**用你的真实会话证据做个性化**。深度来自 playbook，针对性来自你的数据。playbook 是开源的 —— 团队可以加自己的招式。
+
+**至少 5 条，永远不少于 5 条** —— 高分用户也一样，给的是 level-up 进阶动作：(a) 把强项从 82 推到 90+，(b) 把一个维度成功的习惯迁移到较弱维度，(c) 针对实际 workflow 的 Skill/MCP/Subagent/Workflow 动作，(d) 流程习惯，(e) 风险减少。
 
 每条建议都包含：
 
@@ -276,27 +313,45 @@ baseline = 50
 {
   "dimensionId": "verification",
   "priority": "high",
+  "actionType": "setup",              // prompt | habit | setup | orchestration
+  "playbookId": "hook-verification-loop",
   "title": { "en": "...", "zh": "..." },
   "body": { "en": "...", "zh": "..." },
-  "evidence": { "en": "Across 8 sessions...", "zh": "8 个会话里..." },
-  "promptRewrite": { "en": "Before you write code...", "zh": "在写代码前..." },
-  "expectedImpact": { "en": "+10-15 Proof Check...", "zh": "+10-15 鉴定术..." }
+  "evidence": { "en": "In session 151b7904 you accepted a 3-file refactor with 'ok' — one of 6 such moments.", "zh": "..." },
+  "promptRewrite": { "en": "Before you write code, walk me through...", "zh": "..." },
+  "assetPath": ".claude/settings.json",              // 仅 setup 类
+  "assetContent": "{ \"hooks\": { ... } }",           // 仅 setup 类 —— 拿来即装
+  "expectedImpact": { "en": "+10-15 Proof Check; minimal Efficiency cost.", "zh": "..." }
 }
 ```
 
+**`setup` 类建议直接附上资产本身** —— 一段可直接安装的 CLAUDE.md 片段、hook 配置、`.mcp.json` 条目、命令文件或 agent 定义。报告用复制按钮 + 一行安装说明渲染它，"建议"就变成了 10 秒钟的动作。
+
 **优先级映射：**
 
-| 分数 | 优先级 | 是否必给 |
-|---|---|---|
-| 0-54（D/C） | high | 是 |
-| 55-69（B） | medium | 通常给 |
-| 70-84（A） | low | 仅当有明确缺口 |
-| 85-100（S） | — | 跳过 |
+| 分数 | 优先级 |
+|---|---|
+| 0-54（D/C） | high（必给） |
+| 55-69（B） | medium（明显做得差就升为 high） |
+| 70-84（A） | low（冲 S 的 level-up 动作） |
+| 85-100（S） | low（巩固，或把习惯迁移到较弱维度） |
 
 **质量门槛：**
 - `promptRewrite` 必须是具体可粘贴字符串 —— 不能是"多问问"这种废话
 - `expectedImpact` 要诚实地说取舍（"+12 鉴定术，但可能稍微慢一点"）
-- `evidence` 必须引用/转述真实会话内容
+- `evidence` 必须引用/转述真实会话内容（parser 的 `dimensionEvidence` 就是为此存在的）
+
+---
+
+## 距上次体检（纵向对比）
+
+每份渲染出的报告都会本地归档（`~/.claude-radar/history/<project>/`，保留最近 10 份）。下次运行时，基线引擎加载上次报告，报告里会显示：
+
+- **分数 delta** —— overall 和每个维度。
+- **已采纳的招式** —— 尽可能做机械检测：CLAUDE.md 新建或变大、`.mcp.json` 新增、hooks 配好了、plan 模式 / MCP / workflow / 自定义命令开始使用。
+- **一句简短的趋势短评。**
+
+这把一次性体检变成反馈闭环：你能看到上个月的建议有没有真的推动分数。
 
 ---
 
@@ -328,7 +383,7 @@ Claude Radar 的盲区，明确列出：
 ## 已知局限
 
 1. **小样本仍意味着大误差** —— 密度 confidence 缓解了过度缩水，但不消除不确定性。报告会在 profile 段明确标注
-2. **评分仍有运行间方差**（典型 ±3 分）。诊断层足够具体，分数的小波动不影响可操作建议
+2. **基线的运行间方差为零** —— 基线在脚本里计算。仅剩的方差来自有界的 ±15 定性微调，且它必须引证据，否则保持为零。诊断层足够具体，微调的小波动不影响可操作建议
 3. **画像分类是启发式** —— 4 session 的原型可能被归为 `feature-build`，而用户心里它是 `one-shot`。rationale 字段会解释**为什么**这样归类
 4. **架构检测需要文件系统访问** —— 在和项目不同机器上跑分析，Architecture 会 N/A
 5. **rubric 有立场** —— 我们认为强 AI 协作 = 目标明确 + 工具熟练 + 重验证 + 干净收尾。不同标准的团队改 `rubric.json` 即可
@@ -353,18 +408,18 @@ Claude Radar 的盲区，明确列出：
 
 ## 如何修改评分
 
-全在 `data/rubric.json`：
+评分在 `data/rubric.json`，建议在 `data/playbook.json`：
 
-- **改基线公式** —— 改 `dimensions.<dim>.baselineFormula`
+- **改基线公式** —— 改 `dimensions.<dim>.baselineTerms`（结构化、由机器执行；`baselineFormula` 字符串只是给人读的文档）
 - **改类别分组** —— 改 `categories.<cat>.dimensionIds`
 - **改 profile 权重 / N/A 规则** —— 改 `profiles.<profile>.categoryWeights` 和 `naDimensions`
-- **改适用性规则** —— 改 `dimensions.<dim>.applicabilityRule`
+- **改适用性规则** —— 改 `dimensions.<dim>.applicabilityCondition`
 - **改等级阈值** —— 改 `grades[*].range`
 - **改 confidence 缩放** —— 改 `scoring.confidenceScaling`
 - **改诊断规范** —— 改 `diagnosis.*`
-- **改建议规范** —— 改 `suggestions.*`
+- **改建议 / 增删招式** —— 改 `data/playbook.json`：每个招式 = 触发条件 + 双语文案 + 可选的可安装资产模板。欢迎社区贡献。
 
-不用改代码，Claude 每次跑都重读 `rubric.json`。
+不用改代码，脚本每次跑都重读这两个文件。改完跑 `node test/run.mjs` 防回归。
 
 ---
 

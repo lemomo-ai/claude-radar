@@ -18,7 +18,11 @@
 
 **⚖️ Project-aware fairness.** A 3-message bugfix isn't compared to a 50-session feature build. Claude Radar auto-classifies each project (`one-shot` / `feature-build` / `long-running` / `learning`) and applies different category weights and N/A rules. Density-based confidence prevents short-but-substantive sessions from being unfairly shrunk.
 
-**🛠 Scores how you use the platform, not just how you talk.** The Engineering category specifically measures Skills, MCP servers, Subagents, CLAUDE.md, Plan mode, and custom commands — the leverage most users underuse. Not using advanced tools is fine; using them poorly (retry loops, plan-then-abandon) is what hurts.
+**🛠 Scores how you use the platform, not just how you talk.** The Engineering category measures Skills, MCP servers, Subagents, **Workflow orchestration, parallel fan-out, background tasks**, CLAUDE.md, `.mcp.json`, hooks, Plan mode, and custom commands — the leverage most users underuse. Not using advanced tools is fine; using them poorly (retry loops, plan-then-abandon) is what hurts.
+
+**📦 Suggestions ship as installable assets.** Beyond pastable prompts, `setup`-type suggestions include the actual file content — a CLAUDE.md section, a hook config, an `.mcp.json` entry, a custom command — drawn from an open, trigger-matched playbook (`data/playbook.json`) and personalized with your session evidence.
+
+**📈 Tracks your progress.** Reports are archived locally; each new run shows score deltas since your last check-up and detects which past suggestions you actually adopted (CLAUDE.md created, hooks configured, plan mode in use…).
 
 **🔒 100% local, zero telemetry.** Read-only access to your local Claude Code project records. No API key, no cloud, no network calls. Bilingual (English + 中文) reports built in.
 
@@ -117,8 +121,8 @@ Your session data stays on your machine:
 
 **Two-layer model:**
 
-1. **Scoring** — deterministic baseline formula + bounded Claude ±15 adjustment with cited evidence. Total variance ~±3 points.
-2. **Diagnosis** — independent qualitative pass. Free-form 150-word collaboration profile, core diagnosis, cross-dimension reading.
+1. **Scoring** — baselines are computed **entirely in script** (`compute-baselines.mjs` evaluates the structured formulas in `rubric.json`) — zero run-to-run variance — plus a bounded Claude ±15 adjustment that must cite evidence or stay at zero.
+2. **Diagnosis** — independent qualitative pass. Free-form 150-word collaboration profile, core diagnosis, cross-dimension reading, grounded in dimension-targeted evidence moments extracted by the parser.
 
 **Fairness mechanisms:**
 
@@ -140,7 +144,7 @@ All scoring rules live in [`data/rubric.json`](./data/rubric.json):
 - Diagnosis and suggestion specifications
 - Density-based confidence scaling
 
-If you want scoring to match your team's standards, edit this file. Claude re-reads it every run.
+If you want scoring to match your team's standards, edit this file — the scoring engine re-reads it every run. Suggestions live in [`data/playbook.json`](./data/playbook.json) the same way: each move is a trigger condition + bilingual copy + optional installable asset template. Run `node test/run.mjs` after editing.
 
 ---
 
@@ -150,19 +154,24 @@ If you want scoring to match your team's standards, edit this file. Claude re-re
 claude-radar/
 ├── .claude-plugin/plugin.json        # plugin manifest
 ├── skills/analyze/
-│   ├── SKILL.md                      # cwd detection + 9-dim scoring + diagnosis
+│   ├── SKILL.md                      # flow: detect → parse → baselines → adjust/diagnose → render
 │   └── scripts/
 │       ├── list-projects.mjs         # scan projects + cwd match
-│       ├── parse-project.mjs         # facts extraction (tool/skill/MCP/CLAUDE.md detection)
-│       └── render-report.mjs         # JSON → HTML
+│       ├── parse-project.mjs         # facts extraction (injection filtering, orchestration signals,
+│       │                             #   slash commands, assets, dimension evidence)
+│       ├── compute-baselines.mjs     # deterministic scoring + playbook triggers + last-run compare
+│       └── render-report.mjs         # JSON → HTML + history archive
 ├── viewer/template.html              # dashboard report template
-├── data/rubric.json                  # 9-dim formulas + profile weights + diagnosis spec
+├── data/
+│   ├── rubric.json                   # 9-dim structured formulas + profile weights + diagnosis spec
+│   └── playbook.json                 # 30+ trigger-matched suggestion moves with asset templates
+├── test/run.mjs                      # regression suite (fixtures + baseline arithmetic + triggers)
 └── docs/
     ├── METHODOLOGY.md                # methodology (English)
     └── METHODOLOGY_zh.md             # methodology (Chinese)
 ```
 
-About 250 KB. Zero runtime dependencies.
+About 300 KB. Zero runtime dependencies. Run `node test/run.mjs` to verify the deterministic layer.
 
 ---
 

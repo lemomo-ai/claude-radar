@@ -1,14 +1,24 @@
 ---
 name: claude-radar
-description: Analyze the user's Claude Code collaboration style. Detects the current working directory project (or lets the user pick from recent projects), then scores 9 dimensions across 3 categories (Communication / Engineering / Outcome) using position-aware signals and a formula+adjustment method, with project-profile-aware weighting and N/A handling. Produces a diagnosis layer (collaboration profile, core diagnosis, cross-dimension reading) plus 3-7 actionable improvement suggestions with prompt-rewrite examples. Renders a single-file HTML report. 100% local.
+description: Analyze the user's Claude Code collaboration style. Detects the current working directory project (or lets the user pick from recent projects), then scores 9 dimensions across 3 categories (Communication / Engineering / Outcome). Baselines are computed deterministically by scripts; Claude adds a bounded evidence-cited adjustment, a diagnosis layer (collaboration profile, core diagnosis, cross-dimension reading), and 5-7 actionable suggestions instantiated from a trigger-matched playbook — including pastable prompts and installable assets. Renders a single-file HTML report with last-run comparison. 100% local.
 disable-model-invocation: true
-allowed-tools: Bash(node *) Read Write
+allowed-tools: Bash(node:*), Read, Write, AskUserQuestion
 argument-hint: (optional project number or 'list')
 ---
 
 # Claude Radar — Claude Code Collaboration Style Analyzer
 
-You are the **Claude Radar** scoring + diagnosis engine. Claude Radar evaluates 9 dimensions across 3 categories (Communication / Engineering / Outcome) and produces a free-form qualitative diagnosis — that is the most valuable output for the user.
+You are the **Claude Radar** adjustment + diagnosis engine. The pipeline is:
+
+```
+list-projects.mjs → parse-project.mjs (facts) → compute-baselines.mjs (scoring packet)
+        → YOU: ±15 adjustments, diagnosis, suggestion instantiation → report JSON
+        → render-report.mjs (HTML + history archive)
+```
+
+**Division of labor — respect it strictly:**
+- Scripts do ALL arithmetic: baselines, confidence scaling, N/A rules, playbook trigger matching, previous-run loading. **Never recompute or "correct" a baseline.**
+- You do what only you can: evidence-cited score adjustments, qualitative diagnosis, and turning candidate moves into personalized suggestions.
 
 ---
 
@@ -24,137 +34,80 @@ node ${CLAUDE_SKILL_DIR}/scripts/list-projects.mjs --cwd "$PWD"
 
 The output JSON has `projects[]` (sorted by recency) and `cwdMatch` (the project corresponding to the current working directory, or `null`).
 
-### Step 2 — Confirm or pick
+### Step 2 — Confirm or pick (use AskUserQuestion)
 
-**Branch A — `cwdMatch` is non-null:**
+**Branch A — `cwdMatch` is non-null:** ask with the AskUserQuestion tool:
 
-If `cwdMatch.matchType === 'exact'` or `'suffix'`, show:
-```
-📊 Claude Radar — Detected current project: <displayName>
-   (<sessionCount> sessions, last active <date>)
+- Question: `Analyze this project? — <displayName> (<sessionCount> sessions, last active <date>)` (if `matchType === 'parent'`, say instead: `No Claude history for the current directory — analyze the parent project <displayName>?`)
+- Options: **"Yes, analyze it (Recommended)"** / **"Pick another project"**
 
-Analyze this project? [Y/n]   (or type a number to pick a different one)
-```
+If the user picks "Pick another project" (or `cwdMatch` is null) → Branch B.
 
-If `cwdMatch.matchType === 'parent'`, the user opened Claude from a subdirectory that has no own history — but a parent directory does. Be transparent:
-```
-📊 Claude Radar — No Claude history for current directory (<basename of $PWD>).
-   Found history under parent directory: <displayName>
-   (<sessionCount> sessions, last active <date>)
+**Branch B:** ask with AskUserQuestion, listing the top recent projects as options (label: displayName, description: `<n> sessions · last <date>`). Offer at most 4 per question; include an option "Show more" that lists the next batch. The user can always type a number via "Other".
 
-Analyze the parent directory's history? [Y/n]   (or type a number to pick a different one)
-```
-
-If the user replies Y / yes / 是 / enter / nothing → use `cwdMatch.path` and proceed to Step 3.
-
-If the user types a number → use `projects[number-1].path`.
-
-If the user types n / no / 否 → show the top-10 list (Branch B).
-
-**Branch B — `cwdMatch` is null OR user declined:**
-
-Show the top 10 most recent projects:
-
-```
-📊 Claude Radar — Recent projects:
-
-  1. <displayName>     <n> sessions · last <date>
-  2. ...
-  ...
-  10. ...
-
-(showing 10 of <total>. Type a number, or 'more' to see all.)
-Enter project number:
-```
-
-If `more`, list all projects. Wait for the user to enter a number, then use `projects[i].path`.
+Resolve to a `projects[i].path`.
 
 ### Step 3 — Parse the chosen project
 
-Run:
-
 ```
-node ${CLAUDE_SKILL_DIR}/scripts/parse-project.mjs <project-path>
+node ${CLAUDE_SKILL_DIR}/scripts/parse-project.mjs <project-path> --out ~/.claude-radar/temp/facts-latest.json
 ```
 
-The output is a facts JSON. Key blocks:
+Stdout is a compact confirmation (`factsPath`, project, sessionCount, profileType, confidence, dominantLanguage). Tell the user: `"Analyzing <N> sessions (<profileType>)..."`
 
-- **`projectProfile`** — `{type, label, rationale, naDimensions, categoryWeights}` — drives weighting and N/A
-- **`projectAssets`** — `{cwdResolved, hasClaudeMd, claudeMdSize, hasMemoryDir, ..., hasSettingsJson}` — fuel for Architecture dimension
-- **`toolcraftSummary`** — `{totalToolCalls, byCategory, topTools, mcpServers, skillsUsed, subagentCalls, planModeEntries, customCommands}` — fuel for Toolcraft
-- **`outcomeTotals`** — `{fileEditCount, distinctFilesTouched, cleanEndRatio, editsPerHumanMsg, toolsPerHumanMsg, filesPerHumanMsg, ...}` — fuel for Efficiency + Completion
-- **`sessionOutcomes`** — per-session outcome arrays
-- **`signalsByPosition`** — opening/directing/correcting/confirming/continuing buckets
-- **`stats`, `patterns`, `labelCounts`, `labelRatios`** — global aggregates
-- **`firstMessage`, `keyMessages`, `sampleExchanges`, `sessionFlows`** — evidence sources for adjustments and diagnosis
-- **`confidenceLevel`** — low / medium / high (density-based, not just volume)
-- **`signalDensity`, `outcomeDensity`** — used to justify why confidence landed where it did
+### Step 4 — Compute baselines & candidates
 
-Tell the user: `"Analyzing <N> sessions (<profileLabel>)..."`
+```
+node ${CLAUDE_SKILL_DIR}/scripts/compute-baselines.mjs ~/.claude-radar/temp/facts-latest.json
+```
 
-### Step 4 — Read the rubric
+Stdout is the **scoring packet** — your single source of truth. Key blocks:
 
-Read `${CLAUDE_SKILL_DIR}/../../data/rubric.json`. This is the scoring constitution: 9 dimension definitions, baseline formulas, applicability rules, grade thresholds, profile weight tables, diagnosis/suggestion specs.
+- **`baselines`** — per dimension: `{applicable, raw, scaled, breakdown, naReason}`. `scaled` already includes confidence scaling. These are FINAL baselines.
+- **`baselinePreview`** — baseline-only category/overall preview (pre-adjustment sanity anchor).
+- **`dimensionsMeta`** — names, descriptions, adjustmentGuide per dimension (from rubric.json).
+- **`grades`** — grade thresholds.
+- **`dimensionEvidence`** — per-dimension concrete moments (vague directives, blind accepts with the assistant message before them, bare corrections, compaction events, unclean endings…). **This is your primary citation source.**
+- **`keyMessages` / `sampleExchanges` / `sessionFlows` / `firstMessage`** — additional evidence.
+- **`stats` / `patterns` / `labelRatios` / `signalsByPosition` / `toolcraftSummary` (incl. `orchestration`) / `projectAssets` / `outcomeTotals` / `techStackDetected`** — aggregates.
+- **`candidateMoves`** — playbook moves whose triggers matched this project, sorted weakest-dimension-first. Each has title/insight/promptRewrite (bilingual), optional `asset` template, `expectedImpact`, `dimensionBaseline`.
+- **`previous`** — last report for this project (or null): scores, suggestions, and mechanically detected `adoptionSignals`.
 
 ---
 
-## Step 5 — Score the 9 dimensions
+## Step 5 — Adjust the 9 dimensions (±15 max)
 
 For each dimension in `dimensionOrder`:
 
-### Step 5a — Check applicability
+**N/A dimensions** (`baselines[id].applicable === false`): output with `score: null, grade: null, applicable: false` and a brief `reasoning` from `naReason`. Move on.
 
-A dimension is **N/A** if either:
-1. `projectProfile.naDimensions` includes its id, OR
-2. The dimension's `applicabilityRule` condition is met (e.g. `architecture` is N/A when `projectAssets.cwdResolved === false`)
-
-If N/A: set `score: null, grade: null, applicable: false`, write a brief `reasoning` explaining why ("Architecture not evaluated because the project's working directory could not be located on this machine"), and move on.
-
-### Step 5b — Compute baseline (deterministic)
-
-Plug the facts values into the dimension's `baselineFormula`. Result is clamped to [0, 100].
-
-**Position-aware reading** for the 3 communication dimensions:
-- `intent` reads `signalsByPosition.directing.ratios`
-- `context` reads `signalsByPosition.opening.ratios` + `firstMessage`
-- `feedback` reads `signalsByPosition.correcting.ratios` + relevant patterns
-
-For engineering/outcome dimensions, read from `toolcraftSummary`, `projectAssets`, `outcomeTotals`, `patterns`, `labelRatios` as the formula specifies.
-
-If a primary position bucket has `messageCount: 0`, fall back to global `labelRatios` and note this in `reasoning`.
-
-### Step 5c — Confidence scaling
-
-Apply per rubric `scoring.confidenceScaling`:
-- `low`: `adjusted = 50 + (baseline - 50) * 0.75`
-- `medium`: `adjusted = 50 + (baseline - 50) * 0.9`
-- `high`: no change
-
-### Step 5d — Claude adjustment (±15 max)
-
-Read `keyMessages`, `sampleExchanges`, `sessionFlows`, `toolcraftSummary.skillsUsed`, etc. and adjust:
+**Applicable dimensions:**
 
 ```
-finalScore = clamp(adjusted + claudeAdjustment, 0, 100)
+finalScore = clamp(baselines[id].scaled + claudeAdjustment, 0, 100)
 |claudeAdjustment| ≤ 15
 ```
 
 **Rules:**
-1. Cite specific evidence. ("`keyMessages[3]` — user pinpointed a regression in 87 chars including file path + function name → 'silent expert' precision.")
-2. Reference `adjustmentGuide.upward` / `adjustmentGuide.downward` in rubric.
-3. No evidence = no adjustment. `claudeAdjustment = 0` is valid.
+1. Start from `baselines[id].scaled`. Never re-derive it.
+2. Adjust ONLY with cited evidence from `dimensionEvidence` / `keyMessages` / `sampleExchanges` / `sessionFlows` / `toolcraftSummary`. Reference `dimensionsMeta[id].adjustmentGuide`.
+3. No evidence = no adjustment. `claudeAdjustment = 0` is valid and common.
+4. Grade from `grades` thresholds.
 
-### Step 5e — Output per dimension
+**Output per dimension:**
 
 ```jsonc
 {
   "id": "intent",
   "category": "communication",
-  "name": {"en": "Lock-On", "zh": "瞄准力"},
-  "description": {"en": "...", "zh": "..."},   // from rubric
+  "name": {"en": "Lock-On", "zh": "瞄准力"},          // from dimensionsMeta
+  "shortName": {"en": "Lock-On", "zh": "瞄准"},
+  "description": {"en": "...", "zh": "..."},
   "applicable": true,
   "score": 76,
   "grade": "A",
+  "baseline": 72,                                     // baselines[id].scaled, for transparency
+  "adjustment": 4,
   "reasoning": {
     "en": "Plain-language paragraph describing the user's actual behavior. Do NOT expose formula internals like 'hasExpectedBehavior=0.38'.",
     "zh": "用人话描述用户的实际行为模式。不要暴露内部指标名。"
@@ -163,229 +116,131 @@ finalScore = clamp(adjusted + claudeAdjustment, 0, 100)
 }
 ```
 
-For N/A dimensions:
-```jsonc
-{
-  "id": "architecture",
-  "category": "engineering",
-  "name": {...},
-  "description": {...},
-  "applicable": false,
-  "score": null,
-  "grade": null,
-  "reasoning": {"en": "N/A — could not locate the project's working directory on this machine, so CLAUDE.md / memory / agents detection wasn't possible.", "zh": "..."}
-}
-```
-
 ---
 
 ## Step 6 — Category scores and overall
 
-**Category score** (per category): straight average of the **applicable** dimensions in that category, rounded.
+**Category score**: straight average of the **applicable** dimensions' final scores in that category, rounded.
 
-```jsonc
-"categoryScores": {
-  "communication": 78,
-  "engineering": 65,
-  "outcome": 74
-}
-```
+**Overall score**: weighted sum using `profile.categoryWeights`, rounded. If a category has all its dimensions N/A, redistribute its weight proportionally to the other categories (same rule the preview used).
 
-**Overall score**: weighted sum using `projectProfile.categoryWeights`, rounded. If a category has all its dimensions N/A, redistribute its weight proportionally to the other categories.
+**Overall grade**: look up in `grades`.
 
-```
-overallScore = round(Σ categoryScore[c] * adjustedWeight[c])
-```
-
-**Overall grade**: look up `overallScore` in `rubric.grades`.
+Sanity check: your overall should be within ±15 of `baselinePreview.overallScore`. If it isn't, re-examine your adjustments.
 
 ---
 
 ## Step 7 — Diagnosis layer (the core user value)
 
-This is independent of scoring. Produce three pieces of qualitative interpretation:
+Independent of scoring. Three pieces, all bilingual:
 
-### 7a — `collaborationProfile` (120-180 words, bilingual)
+### 7a — `collaborationProfile` (120-180 words)
 
-A free-form picture of *how this user collaborates with AI*.
+A free-form picture of *how this user collaborates with AI*. **Must reference real behavior patterns** — cite counts and moments from the packet ("across 17 sessions you launched 98 subagents and 12 workflows — rare orchestration fluency — yet no CLAUDE.md exists"). Avoid personality archetypes; describe observable behavior.
 
-**Must reference real behavior patterns** from facts. Examples of grounded observations:
-- "You give Claude short, file-path-anchored instructions — across 47 sessions, 68% of your `directing` messages include a file path."
-- "Across 23 sessions you used 4 distinct skills and invoked subagents 12 times — uncommon platform fluency."
-- "You rarely ask 'what's your plan' (`thinkFirst` ratio 0.04) — you treat Claude as an executor, not a collaborator."
-
-**Avoid** personality archetypes ("You're an INTJ-style architect..."). Avoid generic praise.
-
-### 7b — `coreDiagnosis` (60-100 words, bilingual)
-
-One paragraph naming **the single strongest strength** and **the single most critical bottleneck**, with evidence.
+### 7b — `coreDiagnosis` (60-100 words)
 
 Format: "**Strength**: [trait] — [evidence]. **Bottleneck**: [trait] — [evidence + concrete cost]."
 
-Example: "**Strength**: your `Lock-On + Toolcraft` combo is top-tier — short directives that pair file paths with skill invocations let AI hit the ground running. **Bottleneck**: 95% of your messages tell AI what to do; only 5% check whether it did it right. This turns Claude into a fast but unsupervised intern — fine for prototypes, risky for shipped code."
+### 7c — `crossDimensionReading` (1-2 sentences)
 
-### 7c — `crossDimensionReading` (1-2 sentences, bilingual)
-
-Interpret how the dimension scores combine. Examples:
-- "High Lock-On + low Proof Check = you trust AI's execution but not its judgment."
-- "Strong Toolcraft + weak Architecture = you use the platform well in flight but haven't invested in persistent setup."
-
-### 7d — Output structure
-
-```jsonc
-"diagnosis": {
-  "collaborationProfile": {"en": "<150-word picture>", "zh": "<150-word picture>"},
-  "coreDiagnosis": {"en": "...", "zh": "..."},
-  "crossDimensionReading": {"en": "...", "zh": "..."}
-}
-```
+How the scores combine: "High Toolcraft + low Architecture = you use the platform brilliantly in flight but rebuild the runway every morning."
 
 ---
 
-## Step 8 — Improvement suggestions (MINIMUM 5, UP TO 7, driven by real opportunities)
+## Step 8 — Suggestions: instantiate from candidateMoves (MINIMUM 5, UP TO 7)
 
-**Mapping from scores:**
-| Score | Grade | Suggestion priority |
-|---|---|---|
-| 0-39 | D | high (required) |
-| 40-54 | C | high (required) |
-| 55-69 | B | medium (upgrade to high if clearly poor) |
-| 70-84 | A | low (level-up move toward S) |
-| 85-100 | S | low (refinement to lock in the strength, OR cross-pollinate to weaker dims) |
+**Primary source: `candidateMoves`.** These already passed deterministic trigger checks — they are real opportunities, not guesses. Your job:
 
-**Final count MUST be 5-7. Never fewer than 5.** Sort: high → medium → low; within priority, by impact scope.
+1. **Select 5-7** moves. Balance: cover the weakest dimensions first (candidates are pre-sorted), then diversity — at most 2 moves per dimension, at least one `setup` and one `orchestration`/`prompt` if available.
+2. **Personalize each**: rewrite `insight` into `body` referencing THIS project's evidence (real numbers, real quotes from `dimensionEvidence`). Fill `evidence` with a concrete cited moment.
+3. **Instantiate asset templates**: replace `{{placeholders}}` with real values from the packet (`techStackDetected`, project name, real commands if visible in evidence). If a placeholder can't be grounded, keep a clearly-marked `<fill-in>` slot.
+4. **Priority** from the dimension's final score: D/C → high, B → medium, A/S → low.
+5. If candidates are fewer than 5 or leave a required high-priority gap uncovered, add your own move following the same schema — evidence-grounded, never a platitude.
 
-**If the user is mostly A/S and you'd naturally only produce 2-3 suggestions, you MUST still produce 5. Sources of additional level-up suggestions:**
-1. **Within strong dimensions** — a dim at 82 still has room to 95. Example: "Your Lock-On is 82. To hit 90+, attach a 'definition of done' to each request."
-2. **Cross-pollinate** — apply a habit that's working in one dim to another. Example: "You give great constraints in Lock-On but rarely in Steering — bring constraint language into corrections."
-3. **Platform leverage** — even strong users often miss Skills/MCP/Subagent opportunities. Suggest a specific advanced-tool move tied to their actual workflow.
-4. **Process habits** — recap discipline, milestone discipline, session scoping. Even S-tier dims often have process-level refinements.
-5. **Risk reduction** — even strong scoring can hide a brittleness. Example: high Efficiency + low CLAUDE.md = "your skill is locked in your head, not in the project."
-
-Do NOT pad with empty platitudes ("verify more", "be more thoughtful"). Each of the 5+ suggestions must be specific, evidence-grounded, and ship with a usable promptRewrite.
-
-**Each suggestion has:**
+**Each suggestion:**
 
 ```jsonc
 {
   "dimensionId": "verification",
   "priority": "high",
-  "title": {"en": "Ask before you accept", "zh": "先问再收"},
-  "body": {"en": "1-2 sentences, specific and actionable.", "zh": "..."},
-  "evidence": {"en": "Across 8 sessions you replied 'ok' 23 times to AI code output without inspecting it — that's a blind-accept ratio of 0.31.", "zh": "..."},
-  "promptRewrite": {"en": "Next time AI proposes a fix, paste: 'Before I run this, walk me through what could go wrong and how you'd test it.'", "zh": "下次 AI 给方案时，粘贴：'在我跑之前，先告诉我可能出哪些问题，你会怎么测试。'"},
-  "expectedImpact": {"en": "+10–15 Proof Check; small Efficiency cost.", "zh": "+10-15 鉴定术；轻微 Efficiency 损失。"}
+  "actionType": "setup",              // prompt | habit | setup | orchestration (from the move)
+  "playbookId": "hook-verification-loop",   // omit for hand-rolled suggestions
+  "title": {"en": "Automate the checking", "zh": "让检查自动发生"},
+  "body": {"en": "1-2 sentences, personalized to this project.", "zh": "..."},
+  "evidence": {"en": "In session 151b7904 you accepted a 3-file refactor with '好的' without inspection — one of 6 such moments.", "zh": "..."},
+  "promptRewrite": {"en": "...", "zh": "..."},
+  "assetPath": ".claude/settings.json",     // setup moves only
+  "assetContent": "{\n  \"hooks\": { ... }\n}",   // setup moves only — instantiated, installable
+  "expectedImpact": {"en": "+10 Proof Check; verification becomes ambient.", "zh": "..."}
 }
 ```
 
 **Quality bar:**
-- `evidence` must quote/paraphrase real session content from `keyMessages` / `sampleExchanges` / `toolcraftSummary` / `sessionOutcomes`.
-- `promptRewrite` must be a concrete pastable string — not advice like "ask more questions".
-- `expectedImpact` should be honest about trade-offs (it's fine to say "Efficiency may dip slightly").
+- `evidence` must quote/paraphrase real session content. No evidence → pick a different move.
+- `promptRewrite` must be pastable as-is.
+- `expectedImpact` honest about trade-offs.
+- Do NOT pad with platitudes. All 5+ must be specific and grounded.
 
 ---
 
-## Step 9 — Assemble the report JSON 2.0
+## Step 9 — Assemble the report JSON 2.1
 
 ```jsonc
 {
-  "schemaVersion": "2.0",
+  "schemaVersion": "2.1",
   "project": "<displayName>",
+  "projectSlug": "<packet.projectSlug>",     // REQUIRED — history archiving keys on this
   "generatedAt": "<ISO timestamp>",
-  "language": "<MUST match facts.dominantLanguage exactly. If facts.dominantLanguage is 'zh', set 'zh'. Do not override based on personal preference or perceived audience. The parser already accounts for code/path noise.>",
+  "language": "<MUST match packet.dominantLanguage exactly. Do not override.>",
 
   "insight": {
     // REQUIRED. ONE vivid, metaphor-friendly sentence (60-110 chars) — the hero headline.
-    // Think: COACH'S WAKE-UP CALL. A line the user reads and immediately recognizes themselves.
-    //
-    // STYLE RULES:
-    //   ✓ Use metaphor, contrast, or imagery when it fits ("blueprint vs deliverables", "surgical precision but…", "ship fast / ship blind")
-    //   ✓ Specific to this person — never generic ("you collaborate well")
-    //   ✓ Often built on a tension: strong-X but weak-Y, fast-but-Z, precise-but-W
-    //   ✓ Conversational tone, like a senior peer giving honest feedback
-    //
-    // STRICTLY FORBIDDEN:
-    //   ✗ Starting with "Strength:" / "强项：" / "Bottleneck:" / "瓶颈：" patterns (that's coreDiagnosis territory, not the insight)
-    //   ✗ Raw scores, percentages, ratios ("Outcome 85/100", "1.33 edits/msg", "0 retry loops")
-    //   ✗ Category names dropped in like badges ("Outcome 类别", "Communication 类")
-    //   ✗ Stat dumps disguised as sentences
-    //   ✗ Generic praise ("you do great", "你很棒")
-    //
-    // GOOD examples (note metaphor, contrast, specificity):
-    //   "你给 AI 画了漂亮的蓝图，却忘了检查交付物。"
-    //   "You draw AI a beautiful blueprint but forget to inspect the deliverables."
-    //   "你用外科手术般的精准指挥 Claude，却从不让它质疑自己。"
-    //   "You command Claude with surgical precision, but never let it push back."
-    //   "你出货飞快 — 但每次都是闭着眼睛出的。"
-    //   "You ship fast — but you ship blind."
-    //   "你像 senior engineer 一样指挥 AI，却把它当成了一次性外包工。"
-    //   "You direct AI like a senior engineer, but treat it like a one-shot contractor."
-    //
-    // BAD examples (what NOT to write):
-    //   ✗ "强项：Outcome 类别 85/100 真的顶级——效率、收尾、零 retry loop 说明你的会话真能落地。"  (stat dump, category name, no metaphor)
-    //   ✗ "Your communication score is 78."  (literal, boring)
-    //   ✗ "You did well overall."  (generic)
-    "en": "...",
-    "zh": "..."
+    // COACH'S WAKE-UP CALL: a line the user reads and immediately recognizes themselves.
+    //   ✓ metaphor / contrast / tension ("surgical precision but…", "ship fast / ship blind")
+    //   ✗ raw scores, category names, stat dumps, generic praise
+    //   ✗ "Strength:/Bottleneck:" patterns (that's coreDiagnosis territory)
+    // GOOD: "你指挥着一支 agent 舰队，却没给舰队留下一张海图。"
+    // GOOD: "You ship fast — but you ship blind."
+    // BAD:  "Your communication score is 78." / "你很棒。"
+    "en": "...", "zh": "..."
   },
 
   "profile": {
-    "type": "feature-build",
-    "label": {"en": "...", "zh": "..."},                  // from facts.projectProfile.label
-    "rationale": {"en": "...", "zh": "..."},              // from facts.projectProfile.rationale
-    "sessionCount": 23,
-    "dateRange": ["2026-04-01", "2026-05-20"],
-    "humanMessages": 187,
-    "confidence": "high"                                  // facts.confidenceLevel
+    "type": "<packet.profile.type>",
+    "label": {...}, "rationale": {...},        // from packet.profile
+    "sessionCount": 17,
+    "dateRange": [...],
+    "humanMessages": 420,
+    "confidence": "<packet.confidenceLevel>"
   },
 
   "overallScore": 72,
   "overallGrade": "A",
-  "categoryScores": {
-    "communication": 78,
-    "engineering": 65,
-    "outcome": 74
-  },
+  "categoryScores": {"communication": 78, "engineering": 65, "outcome": 74},
 
-  "dimensions": [
-    // 9 dimensions in dimensionOrder. Each is the Step 5e output (applicable or N/A form).
-  ],
+  "dimensions": [ /* 9 items in dimensionOrder, per Step 5 */ ],
 
-  "toolcraftDetails": {
-    // Pass through from facts for the viewer:
-    "totalToolCalls": 1751,
-    "byCategory": {"fileEdit": 616, "bash": 538, ...},
-    "topTools": [{"name": "Edit", "count": 320}, ...],
-    "mcpServers": [{"name": "claude_ai_Gmail", "count": 5}],
-    "skillsUsed": [{"name": "verify", "count": 3}],
-    "subagentCalls": 20,
-    "planModeEntries": 2,
-    "customCommands": [{"name": "/claude-radar", "count": 1}]
-  },
-
-  "projectAssets": {
-    // Pass through from facts.projectAssets for the viewer's Architecture detail.
-    "cwdResolved": true,
-    "hasClaudeMd": true,
-    "claudeMdSize": 4823,
-    "hasMemoryDir": false,
-    "memoryFileCount": 0,
-    "hasAgentsDir": false,
-    "agentCount": 0,
-    "hasCommandsDir": true,
-    "commandCount": 2,
-    "hasSettingsJson": true
-  },
+  "toolcraftDetails": { /* pass through packet.toolcraftSummary verbatim (incl. orchestration) */ },
+  "projectAssets": { /* pass through packet.projectAssets verbatim */ },
 
   "diagnosis": {
-    "collaborationProfile": {"en": "...", "zh": "..."},
-    "coreDiagnosis": {"en": "...", "zh": "..."},
-    "crossDimensionReading": {"en": "...", "zh": "..."}
+    "collaborationProfile": {...}, "coreDiagnosis": {...}, "crossDimensionReading": {...}
   },
 
-  "suggestions": [
-    // 3-7 items per Step 8.
-  ]
+  "suggestions": [ /* 5-7 items per Step 8 */ ],
+
+  // ONLY when packet.previous is non-null:
+  "sinceLastRun": {
+    "previousDate": "<packet.previous.generatedAt>",
+    "overallDelta": <finalOverall - packet.previous.overallScore>,
+    "dimensionDeltas": { "verification": 14, "tempo": -3 },   // final − previous, per dimension present in both; omit zero deltas
+    "adoptedMoves": [ {"en": "...", "zh": "..."} ],
+      // Base on packet.previous.adoptionSignals (mechanical) — you may add one
+      // clearly-evidenced behavioral adoption (e.g. previous suggestion asked for
+      // plan mode; planModeEntries went 0 → 10).
+    "notes": {"en": "1-2 sentence trajectory reading.", "zh": "..."}
+  }
 }
 ```
 
@@ -399,7 +254,7 @@ Write to `~/.claude-radar/temp/report-<timestamp>.json` using the Write tool.
 node ${CLAUDE_SKILL_DIR}/scripts/render-report.mjs <report-json-path>
 ```
 
-The script writes the single-file HTML to `~/.claude-radar/reports/` and tries to open it in the default browser.
+Writes the single-file HTML to `~/.claude-radar/reports/`, archives the report JSON to `~/.claude-radar/history/<projectSlug>/` (fuel for the next run's comparison), and opens the browser.
 
 ---
 
@@ -408,7 +263,7 @@ The script writes the single-file HTML to `~/.claude-radar/reports/` and tries t
 ```
 ✓ Claude Radar report ready
   Project: <project> (<profileLabel>)
-  Overall: <overallGrade> · <overallScore>/100
+  Overall: <overallGrade> · <overallScore>/100   <if sinceLastRun: (Δ +N since <date>)>
   Communication: <c1> · Engineering: <c2> · Outcome: <c3>
   Confidence: <confidenceLevel>
   File: ~/.claude-radar/reports/<filename>.html
@@ -422,46 +277,45 @@ The script writes the single-file HTML to `~/.claude-radar/reports/` and tries t
 
 ## Analysis Principles
 
-1. **Position determines meaning** — read each dimension's signals from its designated position bucket.
-2. **Formula is the anchor, adjustment is the tuning** — baseline ensures reproducibility, adjustment ensures sensitivity. No evidence → no adjustment.
-3. **N/A is honest** — when a dimension genuinely doesn't apply (one-shot project, learning profile, unresolved cwd), say so. Don't fake a 50.
-4. **Diagnosis is the gift** — scores tell the user *what*; diagnosis tells them *why* and *what to do*. Spend the most thinking here.
+1. **Scripts compute, you interpret** — baselines/triggers/deltas are deterministic; your value is evidence-cited adjustment, diagnosis, and personalization.
+2. **Position determines meaning** — communication dimensions read from their position buckets (already baked into baselines).
+3. **N/A is honest** — don't fake a 50.
+4. **Diagnosis is the gift** — spend the most thinking here.
 5. **Bilingual parity** — en/zh same meaning, not literal translation.
-6. **Evidence beats opinion** — every claim in reasoning / evidence / coreDiagnosis must trace back to specific facts.
+6. **Evidence beats opinion** — every claim traces to packet data. `dimensionEvidence` exists precisely so you can cite real moments.
+7. **Suggestions come from the playbook** — trigger-matched moves personalized with evidence beat invented advice.
 
 ---
 
 ## Error Recovery
 
-**Parser script fails** (non-zero exit, invalid JSON):
+**list-projects / parse-project fails** (non-zero exit, invalid JSON):
 - "Couldn't parse this project. The JSONL files may be corrupted. Try another project."
 - Do not continue.
 
+**compute-baselines fails**:
+- Show the script's stderr to the user. Do not hand-compute baselines as a fallback — report the bug instead.
+
 **Insufficient data** (`confidenceLevel: "low"` AND `stats.humanMessages < 5`):
-- Tell the user: "This project has only X messages — too little to evaluate meaningfully. Pick another project."
-- Don't produce a report.
+- "This project has only X messages — too little to evaluate meaningfully. Pick another project."
 
-**Insufficient data but workable** (`confidenceLevel: "low"` AND `humanMessages >= 5`):
-- Produce the report but ensure `profile.confidence: "low"` is reflected in the report. The diagnosis should explicitly mention the sample size limitation.
+**Insufficient but workable** (`low` AND `humanMessages >= 5`):
+- Produce the report; reflect `confidence: "low"` and mention the sample-size limit in the diagnosis.
 
-**Render script fails:**
-- Show the user the report.json path so they can open it manually.
+**Render fails**: show the report.json path so the user can keep it.
 
-**Write tool errors** "directory not found":
-- Run `mkdir -p ~/.claude-radar/temp` via Bash, then retry.
+**Write tool errors** "directory not found": `mkdir -p ~/.claude-radar/temp` via Bash, retry.
 
-**Browser doesn't auto-open:**
-- Tell the user to open the printed file path manually.
-
-**User cancels mid-way:**
-- "OK, run /claude-radar anytime to try again."
+**User cancels mid-way**: "OK, run /claude-radar anytime to try again."
 
 ---
 
 ## Path Reference
 
 - `${CLAUDE_SKILL_DIR}` = `<plugin-root>/skills/analyze/`
-- Scripts: `${CLAUDE_SKILL_DIR}/scripts/`
-- Rubric: `${CLAUDE_SKILL_DIR}/../../data/rubric.json`
+- Scripts: `${CLAUDE_SKILL_DIR}/scripts/` (list-projects, parse-project, compute-baselines, render-report)
+- Rubric: `<plugin-root>/data/rubric.json` (read by compute-baselines)
+- Playbook: `<plugin-root>/data/playbook.json` (read by compute-baselines)
 - Report HTML: `~/.claude-radar/reports/`
-- Temp JSON: `~/.claude-radar/temp/`
+- History: `~/.claude-radar/history/<projectSlug>/`
+- Temp: `~/.claude-radar/temp/`

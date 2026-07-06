@@ -418,6 +418,59 @@
     border-left: 2px solid var(--border-3);
   }
   .suggestion-evidence::before { content: "📌 "; opacity: 0.55; }
+  .action-tag {
+    font-size: 10px; font-weight: 600; padding: 3px 9px;
+    border-radius: 5px; letter-spacing: 0.4px; text-transform: uppercase;
+  }
+  .action-setup { background: rgba(168,85,247,0.14); color: #9333ea; }
+  .action-orchestration { background: rgba(20,184,166,0.14); color: #0d9488; }
+  .action-habit { background: rgba(59,130,246,0.10); color: #2563eb; }
+  .action-prompt { background: var(--bg-3); color: var(--text-3); }
+  @media (prefers-color-scheme: dark) {
+    .action-setup { color: #c084fc; }
+    .action-orchestration { color: #2dd4bf; }
+    .action-habit { color: #60a5fa; }
+  }
+  .asset-block {
+    margin-top: 10px;
+    background: var(--bg-2);
+    border: 1px dashed var(--border-3);
+    border-radius: 10px; padding: 14px 16px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; color: var(--text-2); line-height: 1.55;
+  }
+  .asset-block pre { white-space: pre-wrap; word-break: break-word; margin: 0; overflow-x: auto; }
+  .asset-path { font-weight: 700; color: var(--text-1); text-transform: none; letter-spacing: 0; }
+  .install-hint {
+    margin-top: 8px; font-size: 11px; color: var(--text-4);
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* ===== Since last check-up ===== */
+  .since-panel {
+    margin-top: 18px;
+    background: var(--bg-1); border: 1px solid var(--border-2);
+    border-radius: 14px; padding: 20px 24px; box-shadow: var(--shadow-card);
+  }
+  .since-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--text-4); margin-bottom: 12px;
+  }
+  .since-deltas { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .delta-pill {
+    font-size: 11.5px; padding: 4px 10px; border-radius: 6px;
+    background: var(--bg-2); color: var(--text-3); border: 1px solid var(--border-2);
+  }
+  .delta-up { color: #16a34a; font-weight: 700; }
+  .delta-down { color: #dc2626; font-weight: 700; }
+  @media (prefers-color-scheme: dark) {
+    .delta-up { color: #4ade80; }
+    .delta-down { color: #f87171; }
+  }
+  .since-adopted { font-size: 12.5px; color: var(--text-2); line-height: 1.7; }
+  .since-adopted ul { margin: 4px 0 0 18px; padding: 0; }
+  .since-adopted li::marker { content: "✓ "; color: #16a34a; }
+  .since-note { font-size: 12.5px; color: var(--text-3); line-height: 1.6; margin-top: 8px; }
   .prompt-rewrite-block {
     margin-top: 10px;
     background: var(--accent-soft);
@@ -654,6 +707,8 @@
       <div style="height: 18px"></div>
 
       <div class="scorecards" id="scorecards"></div>
+
+      <div id="sinceLastRun"></div>
     </section>
 
     <!-- ─── Diagnosis ─── -->
@@ -742,7 +797,17 @@
     copied: { en: 'Copied', zh: '已复制' },
     footer: { en: 'Claude Radar — Local analysis, zero telemetry.', zh: 'Claude Radar — 全本地分析，零数据上传。' },
     project: { en: 'Project', zh: '项目' },
-    overall: { en: 'Overall', zh: '总分' }
+    overall: { en: 'Overall', zh: '总分' },
+    sinceTitle: { en: 'SINCE LAST CHECK-UP', zh: '距上次体检' },
+    adopted: { en: 'Adopted since last time', zh: '上次建议已落地' },
+    assetLabel: { en: 'INSTALLABLE ASSET', zh: '可安装资产' },
+    installHint: { en: 'Paste to Claude: "Create this file with the content below."', zh: '贴给 Claude：「按下面的内容帮我创建这个文件」' }
+  };
+  const ACTION_NAMES = {
+    prompt: { en: 'Prompt', zh: '话术' },
+    habit: { en: 'Habit', zh: '习惯' },
+    setup: { en: 'Setup', zh: '装置' },
+    orchestration: { en: 'Orchestration', zh: '编排' }
   };
 
   function gradeFromScore(s) {
@@ -842,6 +907,7 @@
     document.getElementById('gradeScore').textContent = (report.overallScore != null ? report.overallScore : '–') + ' / 100';
 
     renderScorecards(report);
+    renderSinceLastRun(report);
     renderDiagnosis(report);
     renderSuggestions(report);
     renderDimDetails(report);
@@ -926,11 +992,13 @@
       const priority = s.priority || 'medium';
       const dimId = s.dimensionId;
       const matchedDim = dimId ? (report.dimensions || []).find(d => d.id === dimId) : null;
+      const at = s.actionType && ACTION_NAMES[s.actionType] ? s.actionType : null;
       const div = document.createElement('div');
       div.className = 'suggestion';
       div.innerHTML =
         '<div class="suggestion-head">' +
           '<span class="priority-pill priority-' + priority + '">' + priority + '</span>' +
+          (at ? '<span class="action-tag action-' + at + '">' + escapeHtml(ACTION_NAMES[at][lang] || ACTION_NAMES[at].en) + '</span>' : '') +
           (matchedDim ? '<span class="dim-tag">' + escapeHtml(t(matchedDim.name)) + '</span>' : '') +
           '<div class="suggestion-title">' + escapeHtml(t(s.title)) + '</div>' +
         '</div>' +
@@ -940,9 +1008,19 @@
           '<div class="prompt-rewrite-block">' +
             '<div class="prompt-rewrite-label">' +
               '<span>' + tc('promptRewrite') + '</span>' +
-              '<button class="copy-btn" data-idx="' + idx + '">' + tc('copy') + '</button>' +
+              '<button class="copy-btn" data-target="prompt-' + idx + '">' + tc('copy') + '</button>' +
             '</div>' +
             '<div class="prompt-rewrite-text" id="prompt-' + idx + '">' + escapeHtml(t(s.promptRewrite)) + '</div>' +
+          '</div>'
+        ) : '') +
+        (s.assetContent ? (
+          '<div class="asset-block">' +
+            '<div class="prompt-rewrite-label">' +
+              '<span>' + tc('assetLabel') + (s.assetPath ? ' · <span class="asset-path">' + escapeHtml(s.assetPath) + '</span>' : '') + '</span>' +
+              '<button class="copy-btn" data-target="asset-' + idx + '">' + tc('copy') + '</button>' +
+            '</div>' +
+            '<pre id="asset-' + idx + '">' + escapeHtml(t(s.assetContent)) + '</pre>' +
+            '<div class="install-hint">' + tc('installHint') + '</div>' +
           '</div>'
         ) : '') +
         (s.expectedImpact ? '<div class="expected-impact">' + escapeHtml(t(s.expectedImpact)) + '</div>' : '');
@@ -951,15 +1029,52 @@
 
     sDiv.querySelectorAll('.copy-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const idx = btn.dataset.idx;
-        const text = document.getElementById('prompt-' + idx).textContent;
-        navigator.clipboard.writeText(text).then(() => {
+        const target = document.getElementById(btn.dataset.target);
+        if (!target) return;
+        navigator.clipboard.writeText(target.textContent).then(() => {
           btn.textContent = tc('copied');
           btn.classList.add('copied');
           setTimeout(() => { btn.textContent = tc('copy'); btn.classList.remove('copied'); }, 1500);
         });
       });
     });
+  }
+
+  function renderSinceLastRun(report) {
+    const el = document.getElementById('sinceLastRun');
+    if (!el) return;
+    const s = report.sinceLastRun;
+    if (!s) { el.innerHTML = ''; return; }
+    const dimNames = {};
+    (report.dimensions || []).forEach(d => { dimNames[d.id] = t(d.shortName || d.name); });
+
+    let html = '<div class="since-panel"><div class="since-title">' + tc('sinceTitle') +
+      (s.previousDate ? ' · ' + escapeHtml(formatDate(s.previousDate)) : '') + '</div>';
+
+    const pills = [];
+    if (typeof s.overallDelta === 'number' && s.overallDelta !== 0) {
+      pills.push({ label: tc('overall'), delta: s.overallDelta });
+    }
+    const dd = s.dimensionDeltas || {};
+    Object.keys(dd).forEach(id => {
+      const v = dd[id];
+      if (typeof v === 'number' && v !== 0) pills.push({ label: dimNames[id] || id, delta: v });
+    });
+    if (pills.length) {
+      html += '<div class="since-deltas">' + pills.map(p => {
+        const cls = p.delta > 0 ? 'delta-up' : 'delta-down';
+        const sign = p.delta > 0 ? '+' : '';
+        return '<span class="delta-pill">' + escapeHtml(p.label) + ' <span class="' + cls + '">' + sign + p.delta + '</span></span>';
+      }).join('') + '</div>';
+    }
+    const adopted = s.adoptedMoves || [];
+    if (adopted.length) {
+      html += '<div class="since-adopted"><strong>' + tc('adopted') + '</strong><ul>' +
+        adopted.map(a => '<li>' + escapeHtml(t(a)) + '</li>').join('') + '</ul></div>';
+    }
+    if (s.notes) html += '<div class="since-note">' + escapeHtml(t(s.notes)) + '</div>';
+    html += '</div>';
+    el.innerHTML = html;
   }
 
   function renderDimDetails(report) {
@@ -1010,12 +1125,16 @@
     }
 
     // Quick stats block (always first)
+    const orch = tc_d.orchestration || {};
     const quickHtml =
       '<div class="stat-grid">' +
         '<div class="stat-pill"><span>' + (lang === 'zh' ? '工具调用' : 'Tool calls') + '</span><span class="stat-num">' + (tc_d.totalToolCalls || 0) + '</span></div>' +
         '<div class="stat-pill"><span>Subagent</span><span class="stat-num">' + (tc_d.subagentCalls || 0) + '</span></div>' +
         '<div class="stat-pill"><span>Plan mode</span><span class="stat-num">' + (tc_d.planModeEntries || 0) + '</span></div>' +
         '<div class="stat-pill"><span>' + (lang === 'zh' ? '自定义命令' : 'Custom cmds') + '</span><span class="stat-num">' + ((tc_d.customCommands && tc_d.customCommands.length) || 0) + '</span></div>' +
+        '<div class="stat-pill"><span>Workflow</span><span class="stat-num">' + (orch.workflowRuns || 0) + '</span></div>' +
+        '<div class="stat-pill"><span>' + (lang === 'zh' ? '并行爆发' : 'Parallel bursts') + '</span><span class="stat-num">' + (orch.parallelToolBursts || 0) + '</span></div>' +
+        '<div class="stat-pill"><span>' + (lang === 'zh' ? '后台任务' : 'Background') + '</span><span class="stat-num">' + (orch.backgroundTasks || 0) + '</span></div>' +
       '</div>';
     grid.insertAdjacentHTML('beforeend', block('Quick stats', '快览', quickHtml));
 
@@ -1034,10 +1153,13 @@
     // Project assets block
     const assetItems = [
       { key: 'hasClaudeMd', label: { en: 'CLAUDE.md', zh: 'CLAUDE.md' } },
+      { key: 'hasMcpJson', label: { en: '.mcp.json', zh: '.mcp.json' } },
+      { key: 'hasSkillsDir', label: { en: 'Skills dir', zh: 'Skills 目录' } },
       { key: 'hasMemoryDir', label: { en: 'Memory dir', zh: 'Memory 目录' } },
       { key: 'hasAgentsDir', label: { en: 'Agents dir', zh: 'Agents 目录' } },
       { key: 'hasCommandsDir', label: { en: 'Commands dir', zh: '自定义命令目录' } },
-      { key: 'hasSettingsJson', label: { en: 'settings.json', zh: 'settings.json' } }
+      { key: 'hasSettingsJson', label: { en: 'settings.json', zh: 'settings.json' } },
+      { key: 'hasAgentsMd', label: { en: 'AGENTS.md', zh: 'AGENTS.md' } }
     ];
     let pillsHtml = '<div class="stat-grid">';
     if (!assets.cwdResolved) {
@@ -1058,6 +1180,8 @@
     if (assets.memoryFileCount) extraStats.push((lang === 'zh' ? 'Memory：' : 'Memory: ') + assets.memoryFileCount);
     if (assets.agentCount) extraStats.push((lang === 'zh' ? 'Agents：' : 'Agents: ') + assets.agentCount);
     if (assets.commandCount) extraStats.push((lang === 'zh' ? '命令数：' : 'Commands: ') + assets.commandCount);
+    if (assets.settingsHookCount) extraStats.push((lang === 'zh' ? 'Hook 事件：' : 'Hook events: ') + assets.settingsHookCount);
+    if (assets.skillDirCount) extraStats.push((lang === 'zh' ? '项目技能：' : 'Project skills: ') + assets.skillDirCount);
     if (extraStats.length) {
       pillsHtml += '<div style="margin-top:10px;font-size:11px;color:var(--text-4);line-height:1.6">' +
         extraStats.map(escapeHtml).join(' · ') + '</div>';

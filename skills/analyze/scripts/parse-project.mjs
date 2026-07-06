@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // parse-project.mjs — Facts extraction for Claude Radar
-// Adds: tool/skill/MCP/subagent/plan/custom-command stats, CLAUDE.md detection,
-// per-session outcomes, project profile auto-detection, density-based confidence.
-// Usage: node parse-project.mjs <project-path>
-// Output (stdout): facts JSON (schemaVersion 2.0)
+// v2.1: filters compaction/sidechain injections, frequency-based cwd resolution,
+// slash-command detection from <command-name> entries, orchestration signals
+// (Workflow/background/parallel/cron/worktree), dimension-targeted evidence,
+// tech-stack detection, expanded project assets (.mcp.json/AGENTS.md/skills/hooks).
+// Usage: node parse-project.mjs <project-path> [--out <facts-json-path>]
+// Output (stdout): facts JSON (schemaVersion 2.1), or a compact summary with --out
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -80,19 +82,37 @@ for (const [key, val] of Object.entries(KEYWORDS)) {
   MERGED_KEYWORDS[key] = [...(val.zh || []), ...(val.en || [])].map(k => k.toLowerCase());
 }
 
-// Tool categorization
+// Tool categorization — covers the modern Claude Code tool surface.
+// orchestration/background/automation/artifact are the "platform leverage"
+// categories that used to fall into `other` and be invisible to Toolcraft.
 const TOOL_CATEGORY = {
   Edit: 'fileEdit', Write: 'fileEdit', NotebookEdit: 'fileEdit',
   Bash: 'bash',
   Read: 'read',
-  Grep: 'search', Glob: 'search',
+  Grep: 'search', Glob: 'search', LSP: 'search',
   WebFetch: 'web', WebSearch: 'web',
   TodoWrite: 'todo', TaskCreate: 'todo', TaskUpdate: 'todo', TaskList: 'todo', TaskGet: 'todo',
-  Skill: 'skill',
-  Agent: 'subagent', Task: 'subagent',
+  Skill: 'skill', SlashCommand: 'skill',
+  Agent: 'subagent', Task: 'subagent', SendMessage: 'subagent',
+  Workflow: 'orchestration', EnterWorktree: 'orchestration', ExitWorktree: 'orchestration',
+  TaskOutput: 'background', TaskStop: 'background', Monitor: 'background',
+  CronCreate: 'automation', CronDelete: 'automation', CronList: 'automation',
+  ScheduleWakeup: 'automation', RemoteTrigger: 'automation',
+  Artifact: 'artifact', DesignSync: 'artifact',
   ExitPlanMode: 'planMode', EnterPlanMode: 'planMode',
-  AskUserQuestion: 'ask'
+  AskUserQuestion: 'ask', ToolSearch: 'toolSearch'
 };
+
+// Built-in slash commands — everything else invoked as /name counts as a
+// custom command / plugin skill invocation.
+const BUILTIN_COMMANDS = new Set([
+  'model', 'effort', 'clear', 'compact', 'help', 'login', 'logout', 'status', 'cost',
+  'doctor', 'memory', 'config', 'permissions', 'review', 'pr-comments', 'init', 'exit',
+  'quit', 'resume', 'plugin', 'mcp', 'agents', 'hooks', 'export', 'bug', 'release-notes',
+  'terminal-setup', 'vim', 'ide', 'add-dir', 'goal', 'fast', 'todos', 'context', 'rewind',
+  'usage', 'upgrade', 'install-github-app', 'privacy-settings', 'statusline', 'output-style',
+  'bashes', 'files', 'migrate-installer', 'allowed-tools', 'approved-tools', 'loop', 'workflows'
+]);
 
 function categorizeTool(name) {
   if (!name) return 'other';
@@ -114,8 +134,7 @@ const REGEX = {
   error: /\b(?:Error|Exception|TypeError|SyntaxError|ReferenceError|ENOENT|EACCES|EPERM|panic|fatal|stack trace|traceback|报错|错误|崩溃|失败)\b/i,
   codeBlock: /```[\s\S]*?```/,
   listStructure: /^\s*(?:\d+[.)]\s|-\s|\*\s)/m,
-  paragraph: /\n\n/,
-  slashCommand: /(?:^|\s)\/([a-zA-Z][\w-]+)/
+  paragraph: /\n\n/
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -170,7 +189,16 @@ function isInjectedUserMessage(text) {
   if (t === 'Continue from where you left off.') return true;
   if (/^\[Request interrupted by user/i.test(t)) return true;
   if (/^Caveat: The messages below/i.test(t)) return true;
+  // Compaction continuation is handled (and counted) separately before this
+  // check, but keep a guard here as defense in depth.
+  if (/^This session is being continued from a previous conversation/i.test(t)) return true;
   return false;
+}
+
+function isCompactionContinuation(entry, text) {
+  if (entry && entry.isCompactSummary === true) return true;
+  const t = (text || '').trim();
+  return /^This session is being continued from a previous conversation/i.test(t);
 }
 
 function isInjectedAssistantMessage(text) {
@@ -293,7 +321,13 @@ function detectProjectAssets(cwdPath) {
     agentCount: 0,
     hasCommandsDir: false,
     commandCount: 0,
-    hasSettingsJson: false
+    hasSettingsJson: false,
+    hasMcpJson: false,
+    hasAgentsMd: false,
+    hasClaudeLocalMd: false,
+    hasSkillsDir: false,
+    skillDirCount: 0,
+    settingsHookCount: 0
   };
   if (!cwdPath) return result;
   try {
@@ -333,9 +367,32 @@ function detectProjectAssets(cwdPath) {
     }
   } catch {}
 
+  // settings.json / settings.local.json — existence + hook-event key COUNT only.
+  // Privacy: we never surface hook commands or values, just how many hook
+  // events are configured (a signal that a verification loop exists).
+  for (const sf of ['settings.json', 'settings.local.json']) {
+    const p = path.join(cwdPath, '.claude', sf);
+    try {
+      if (!fs.existsSync(p)) continue;
+      if (sf === 'settings.json') result.hasSettingsJson = true;
+      const parsed = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      if (parsed && parsed.hooks && typeof parsed.hooks === 'object') {
+        result.settingsHookCount += Object.keys(parsed.hooks).length;
+      }
+    } catch {}
+  }
+
+  // Project-level MCP config, AGENTS.md, CLAUDE.local.md — existence only.
+  try { result.hasMcpJson = fs.existsSync(path.join(cwdPath, '.mcp.json')); } catch {}
+  try { result.hasAgentsMd = fs.existsSync(path.join(cwdPath, 'AGENTS.md')); } catch {}
+  try { result.hasClaudeLocalMd = fs.existsSync(path.join(cwdPath, 'CLAUDE.local.md')); } catch {}
+
+  const skillsDir = path.join(cwdPath, '.claude', 'skills');
   try {
-    if (fs.existsSync(path.join(cwdPath, '.claude', 'settings.json'))) {
-      result.hasSettingsJson = true;
+    if (fs.existsSync(skillsDir) && fs.statSync(skillsDir).isDirectory()) {
+      result.hasSkillsDir = true;
+      result.skillDirCount = fs.readdirSync(skillsDir, { withFileTypes: true })
+        .filter(d => d.isDirectory()).length;
     }
   } catch {}
 
@@ -441,9 +498,16 @@ function detectProfile(stats, dateRange, totals) {
 // Main
 // ═════════════════════════════════════════════════════════════════════════════
 
-const projectPath = process.argv[2];
+const cliArgs = process.argv.slice(2);
+let outPath = null;
+const positional = [];
+for (let i = 0; i < cliArgs.length; i++) {
+  if (cliArgs[i] === '--out' && cliArgs[i + 1]) { outPath = cliArgs[i + 1]; i++; }
+  else positional.push(cliArgs[i]);
+}
+const projectPath = positional[0];
 if (!projectPath) {
-  console.error('Usage: parse-project.mjs <project-path>');
+  console.error('Usage: parse-project.mjs <project-path> [--out <facts-json-path>]');
   process.exit(1);
 }
 if (!fs.existsSync(projectPath) || !fs.statSync(projectPath).isDirectory()) {
@@ -472,7 +536,12 @@ const stats = {
 
 const toolUsage = {
   total: 0,
-  byCategory: { fileEdit: 0, bash: 0, read: 0, search: 0, web: 0, todo: 0, skill: 0, subagent: 0, planMode: 0, mcp: 0, ask: 0, other: 0 },
+  byCategory: {
+    fileEdit: 0, bash: 0, read: 0, search: 0, web: 0, todo: 0, skill: 0,
+    subagent: 0, planMode: 0, mcp: 0, ask: 0,
+    orchestration: 0, background: 0, automation: 0, artifact: 0, toolSearch: 0,
+    other: 0
+  },
   byName: {},
   mcpServers: {},
   skillsUsed: {},
@@ -483,7 +552,7 @@ let totalHumanChars = 0;
 let totalAssistantChars = 0;
 const dateSet = new Set();
 const distinctFilesTouched = new Set();
-const cwdCandidates = new Set();
+const cwdCandidates = new Map(); // cwd → occurrence count (mode wins, not longest path)
 
 const patterns = {
   blindAccepts: 0,
@@ -491,8 +560,63 @@ const patterns = {
   topicDrifts: 0,
   demandOverloads: 0,
   longUnstructured: 0,
-  noReplyToQuestion: 0
+  noReplyToQuestion: 0,
+  compactionCount: 0
 };
+
+// Orchestration signals — the high-leverage platform usage that used to be invisible.
+const orchestration = {
+  workflowRuns: 0,
+  backgroundTasks: 0,      // Bash/Agent calls with run_in_background
+  parallelToolBursts: 0,   // assistant messages firing >= 3 tools at once
+  maxParallelToolUses: 0,
+  worktreeUses: 0,
+  cronJobs: 0,             // CronCreate + ScheduleWakeup
+  artifactsPublished: 0
+};
+
+// Which tech-stack keywords actually appear in user messages (top-N exported).
+const techStackCounts = {};
+function tallyTechStack(text) {
+  if (!text || text.length > 4000) return;
+  const lower = text.toLowerCase();
+  for (const kw of TECH_STACK) {
+    // Single-char keywords ("c", "r", "v") false-positive on things like "option C"
+    if (kw.length < 2) continue;
+    if (matchesWordBoundary(lower, kw)) techStackCounts[kw] = (techStackCounts[kw] || 0) + 1;
+  }
+}
+
+// Language tally over the FULL user-message corpus (was: ~25 sampled texts).
+let zhChars = 0, enChars = 0, zhMsgs = 0, langMsgs = 0;
+function tallyLang(text) {
+  if (!text) return;
+  const cleaned = text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`[^`]+`/g, '')
+    .replace(/[\/\\][\w.@\-/\\]+\.\w+/g, '');
+  const zh = (cleaned.match(/[一-鿿]/g) || []).length;
+  const en = (cleaned.match(/[a-zA-Z]/g) || []).length;
+  zhChars += zh;
+  enChars += en;
+  langMsgs++;
+  if (zh > 0) zhMsgs++;
+}
+
+// Dimension-targeted evidence: top concrete moments per dimension, with context,
+// so the scorer/diagnoser can cite real events instead of aggregate ratios.
+const dimensionEvidence = {
+  intent: [], context: [], feedback: [], verification: [], tempo: [], completion: []
+};
+const evidenceKindCounts = {};
+function pushEvidence(dim, kind, item, kindCap = 2, dimCap = 4) {
+  const arr = dimensionEvidence[dim];
+  if (!arr || arr.length >= dimCap) return;
+  const key = dim + ':' + kind;
+  if ((evidenceKindCounts[key] || 0) >= kindCap) return;
+  evidenceKindCounts[key] = (evidenceKindCounts[key] || 0) + 1;
+  arr.push({ kind, ...item });
+}
 
 const labelCounts = {};
 for (const k of LABEL_KEYS) labelCounts[k] = 0;
@@ -539,26 +663,41 @@ for (const fileName of sessionFiles) {
     try { rawEntries.push(JSON.parse(line)); } catch {}
   }
 
-  // cwd may be embedded as a top-level field on entries
+  // cwd may be embedded as a top-level field on entries — count occurrences
   for (const entry of rawEntries) {
-    if (entry && typeof entry.cwd === 'string') cwdCandidates.add(entry.cwd);
+    if (entry && typeof entry.cwd === 'string') {
+      cwdCandidates.set(entry.cwd, (cwdCandidates.get(entry.cwd) || 0) + 1);
+    }
   }
 
   const messages = [];
+  const sessionSlashCommands = [];
+  let sessionCompactionCount = 0;
   for (const entry of rawEntries) {
+    // Subagent side-chains and meta entries are not the user talking.
+    if (entry && (entry.isSidechain === true || entry.isMeta === true)) continue;
     const role = extractRole(entry);
     if (!role) continue;
     const msgContent = entry.message?.content;
     const text = extractText(msgContent);
 
     if (role === 'user') {
+      const trimmed = (text || '').trim();
+      // Slash commands are recorded as <command-name> entries — capture them
+      // BEFORE injected-message filtering discards them.
+      const cmdMatch = trimmed.match(/^<command-name>\s*(\/[\w:.-]+)/);
+      if (cmdMatch) { sessionSlashCommands.push(cmdMatch[1]); continue; }
+      // Compaction continuations are machine-written — count, never analyze.
+      if (isCompactionContinuation(entry, trimmed)) { sessionCompactionCount++; continue; }
       if (isInjectedUserMessage(text)) continue;
       messages.push({ role, text, content: msgContent, timestamp: entry.timestamp });
     } else {
       const hasToolUse = hasAssistantToolUse(msgContent);
       if (!text && !hasToolUse) continue;
       if (isInjectedAssistantMessage(text) && !hasToolUse) continue;
-      messages.push({ role, text, content: msgContent, timestamp: entry.timestamp });
+      // Claude Code writes each tool_use block as its own JSONL entry sharing
+      // message.id — keep the id so parallel bursts can be reconstructed.
+      messages.push({ role, text, content: msgContent, timestamp: entry.timestamp, msgId: entry.message?.id || null });
     }
   }
 
@@ -595,6 +734,20 @@ for (const fileName of sessionFiles) {
     hasCompletionSignal: false
   };
 
+  patterns.compactionCount += sessionCompactionCount;
+  if (sessionCompactionCount > 0) {
+    pushEvidence('tempo', 'compaction', {
+      session: sessionRec.file.slice(0, 8),
+      note: `session ran ${sessionCompactionCount} compaction continuation(s) — scope kept growing past one context window`
+    });
+  }
+  for (const cmd of sessionSlashCommands) {
+    const bare = cmd.slice(1).toLowerCase().split(':')[0];
+    if (BUILTIN_COMMANDS.has(bare)) continue;
+    toolUsage.customCommandsInvoked[cmd] = (toolUsage.customCommandsInvoked[cmd] || 0) + 1;
+    sessionOutcome.customCommandsUsed.push(cmd);
+  }
+
   const firstUserIdx = messages.findIndex(m => m.role === 'user');
   if (firstUserIdx >= 0) {
     const first = messages[firstUserIdx];
@@ -607,16 +760,24 @@ for (const fileName of sessionFiles) {
     if (firstMessageAgg.samples.length < 5 && first.text.length > 30) {
       firstMessageAgg.samples.push(first.text.slice(0, 200));
     }
-    // Detect slash-command invocation in opening
-    const slashMatch = first.text.match(REGEX.slashCommand);
-    if (slashMatch) {
-      const cmd = '/' + slashMatch[1];
-      sessionOutcome.customCommandsUsed.push(cmd);
-      toolUsage.customCommandsInvoked[cmd] = (toolUsage.customCommandsInvoked[cmd] || 0) + 1;
+    // Dimension evidence: what do this user's openings actually look like?
+    if (first.text.length < 80 && !labels.hasFilePath && !labels.hasTechStack) {
+      pushEvidence('context', 'thin-opening', {
+        session: sessionRec.file.slice(0, 8),
+        userText: first.text.slice(0, 200),
+        note: 'session opened without stack/context/file anchors'
+      });
+    } else if ((labels.hasTechStack || labels.hasFilePath) && first.text.length > 150) {
+      pushEvidence('context', 'rich-opening', {
+        session: sessionRec.file.slice(0, 8),
+        userText: first.text.slice(0, 300),
+        note: 'well-grounded opening'
+      }, 1);
     }
   }
 
   let sessionUserIndex = 0;
+  const toolsByMsgId = new Map();
 
   for (let mi = 0; mi < messages.length; mi++) {
     const m = messages[mi];
@@ -639,6 +800,8 @@ for (const fileName of sessionFiles) {
     if (m.role === 'user') {
       stats.humanMessages++;
       totalHumanChars += m.text.length;
+      tallyLang(m.text);
+      tallyTechStack(m.text);
 
       if (m.text.length < 60) stats.shortMessageCount++;
       if (m.text.length > 200) stats.longMessageCount++;
@@ -661,9 +824,51 @@ for (const fileName of sessionFiles) {
         if (bucket[lbl] !== undefined) bucket[lbl]++;
       }
 
-      if (m.text.length > 300 && countDemandActions(m.text) >= 3) patterns.demandOverloads++;
+      // Demand overload = many actions crammed WITHOUT structure or sequencing.
+      // A structured multi-item brief (list, phases, "先…然后…") is good batching,
+      // not overload — don't punish 2026-era complete task briefs.
+      const structured = REGEX.listStructure.test(m.text) ||
+        matchesAny(m.text, 'progressive') || matchesAny(m.text, 'checkpoint');
+      if (m.text.length > 300 && countDemandActions(m.text) >= 3 && !structured) {
+        patterns.demandOverloads++;
+        pushEvidence('tempo', 'demand-overload', {
+          session: sessionRec.file.slice(0, 8),
+          userText: m.text.slice(0, 250),
+          note: 'multiple asks in one unstructured message'
+        });
+      }
       if (m.text.length > 500 && !REGEX.paragraph.test(m.text) && !REGEX.listStructure.test(m.text) && !REGEX.codeBlock.test(m.text)) {
         patterns.longUnstructured++;
+      }
+
+      // Dimension evidence by position
+      if (position === 'directing') {
+        if (labels.isVague && !labels.hasExpectedBehavior && m.text.length < 120) {
+          pushEvidence('intent', 'vague-directive', {
+            session: sessionRec.file.slice(0, 8),
+            userText: m.text.slice(0, 200),
+            note: 'directive without expected outcome or constraints'
+          });
+        } else if (labels.hasExpectedBehavior && labels.hasConstraint) {
+          pushEvidence('intent', 'strong-directive', {
+            session: sessionRec.file.slice(0, 8),
+            userText: m.text.slice(0, 250),
+            note: 'goal + constraint in one directive'
+          }, 1);
+        }
+      } else if (position === 'correcting') {
+        pushEvidence('feedback', labels.hasReasoning ? 'reasoned-correction' : 'bare-correction', {
+          session: sessionRec.file.slice(0, 8),
+          userText: m.text.slice(0, 250),
+          note: labels.hasReasoning ? 'correction explains why' : 'correction without the why — AI cannot generalize from it'
+        });
+      }
+      if (labels.requestTest) {
+        pushEvidence('verification', 'verification-request', {
+          session: sessionRec.file.slice(0, 8),
+          userText: m.text.slice(0, 200),
+          note: 'user asked for a test/verification'
+        }, 1);
       }
 
     } else if (m.role === 'assistant') {
@@ -671,10 +876,31 @@ for (const fileName of sessionFiles) {
       sessionOutcome.toolUses += toolUses.length;
       toolUsage.total += toolUses.length;
 
+      // Parallel bursts: Claude Code splits one API message into one JSONL
+      // entry per content block, all sharing message.id — group to count.
+      if (toolUses.length > 0 && m.msgId) {
+        toolsByMsgId.set(m.msgId, (toolsByMsgId.get(m.msgId) || 0) + toolUses.length);
+      }
+
       for (const t of toolUses) {
         const cat = categorizeTool(t.name);
         toolUsage.byCategory[cat] = (toolUsage.byCategory[cat] || 0) + 1;
         toolUsage.byName[t.name] = (toolUsage.byName[t.name] || 0) + 1;
+
+        // Orchestration signals
+        if (t.name === 'Workflow') orchestration.workflowRuns++;
+        if (t.input && t.input.run_in_background === true) orchestration.backgroundTasks++;
+        if (t.name === 'EnterWorktree' || (t.input && t.input.isolation === 'worktree')) orchestration.worktreeUses++;
+        if (t.name === 'CronCreate' || t.name === 'ScheduleWakeup') orchestration.cronJobs++;
+        if (t.name === 'Artifact') orchestration.artifactsPublished++;
+        if (t.name === 'SlashCommand' && t.input && typeof t.input.command === 'string') {
+          const cmdName = t.input.command.trim().split(/\s+/)[0];
+          const bare = cmdName.replace(/^\//, '').toLowerCase().split(':')[0];
+          if (cmdName.startsWith('/') && !BUILTIN_COMMANDS.has(bare)) {
+            toolUsage.customCommandsInvoked[cmdName] = (toolUsage.customCommandsInvoked[cmdName] || 0) + 1;
+            sessionOutcome.customCommandsUsed.push(cmdName);
+          }
+        }
 
         if (cat === 'fileEdit') {
           sessionOutcome.fileEdits++;
@@ -713,6 +939,11 @@ for (const fileName of sessionFiles) {
     }
   }
 
+  for (const count of toolsByMsgId.values()) {
+    if (count >= 3) orchestration.parallelToolBursts++;
+    if (count > orchestration.maxParallelToolUses) orchestration.maxParallelToolUses = count;
+  }
+
   // Ended cleanly: last meaningful message is a user ack OR has completion signal
   const lastMsg = messages[messages.length - 1];
   if (lastMsg.role === 'user') {
@@ -730,13 +961,32 @@ for (const fileName of sessionFiles) {
   delete sessionOutcome.distinctFiles;
   sessionOutcomes.push(sessionOutcome);
 
+  if (!sessionOutcome.endedCleanly) {
+    const lastUser = [...messages].reverse().find(m => m.role === 'user');
+    pushEvidence('completion', 'unclean-end', {
+      session: sessionRec.file.slice(0, 8),
+      userText: lastUser ? lastUser.text.slice(0, 200) : '',
+      note: 'session trailed off without a completion signal'
+    });
+  }
+
   // Sequential patterns
   const userMsgs = messages.filter(m => m.role === 'user');
 
+  // Retry loop = 3 consecutive SUBSTANTIVE near-identical messages.
+  // Short "继续/continue" nudges are a normal long-task driving pattern, not a wall.
   for (let i = 2; i < userMsgs.length; i++) {
+    if (userMsgs[i].text.length < 30 || userMsgs[i - 1].text.length < 30 || userMsgs[i - 2].text.length < 30) continue;
     const s1 = jaccard(userMsgs[i - 2].text, userMsgs[i - 1].text);
     const s2 = jaccard(userMsgs[i - 1].text, userMsgs[i].text);
-    if (s1 > 0.5 && s2 > 0.5) patterns.retryLoops++;
+    if (s1 > 0.5 && s2 > 0.5) {
+      patterns.retryLoops++;
+      pushEvidence('feedback', 'retry-loop', {
+        session: sessionRec.file.slice(0, 8),
+        userText: userMsgs[i].text.slice(0, 200),
+        note: 'same ask repeated 3x with little variation — correction not landing'
+      });
+    }
   }
 
   let consecutiveBreaks = 0;
@@ -744,9 +994,9 @@ for (const fileName of sessionFiles) {
     if (userMsgs[i].text.length < 30 || userMsgs[i - 1].text.length < 30) { consecutiveBreaks = 0; continue; }
     const s = jaccard(userMsgs[i - 1].text, userMsgs[i].text);
     const bothHavePath = REGEX.filePath.test(userMsgs[i - 1].text) && REGEX.filePath.test(userMsgs[i].text);
-    if (s < 0.03 && !bothHavePath) {
+    if (s < 0.02 && !bothHavePath) {
       consecutiveBreaks++;
-      if (consecutiveBreaks >= 2) { patterns.topicDrifts++; consecutiveBreaks = 0; }
+      if (consecutiveBreaks >= 3) { patterns.topicDrifts++; consecutiveBreaks = 0; }
     } else { consecutiveBreaks = 0; }
   }
 
@@ -757,6 +1007,10 @@ for (const fileName of sessionFiles) {
     if (!matchesAny(u.text, 'blindAccept')) continue;
     const prev = messages[i - 1];
     if (prev.role !== 'assistant') continue;
+    // A short "yes/好的" answering AskUserQuestion or approving a plan is
+    // REQUIRED confirmation flow, not blind acceptance.
+    const prevToolNames = extractToolUses(prev.content).map(x => x.name);
+    if (prevToolNames.includes('AskUserQuestion') || prevToolNames.includes('ExitPlanMode') || prevToolNames.includes('EnterPlanMode')) continue;
     const prevHasCode = prev.text && /```/.test(prev.text);
     const prevHasTool = hasAssistantToolUse(prev.content);
     if (!prevHasCode && !prevHasTool) continue;
@@ -773,6 +1027,13 @@ for (const fileName of sessionFiles) {
     }
     if (hadRecentDirective) continue;
     patterns.blindAccepts++;
+    pushEvidence('verification', 'blind-accept', {
+      session: sessionRec.file.slice(0, 8),
+      userText: u.text.slice(0, 120),
+      assistantBefore: (prev.text || '').replace(/\s+/g, ' ').slice(0, 200) || '[tool-only message]',
+      toolsBefore: prevToolNames.slice(0, 6),
+      note: 'accepted substantive AI output without inspection'
+    }, 3);
   }
 
   for (let i = 0; i < messages.length - 1; i++) {
@@ -800,14 +1061,28 @@ for (const fileName of sessionFiles) {
     }
   }
 
+  // Stratified sampling: longest + a median-length message per session, so the
+  // evidence pool reflects how the user usually writes, not just their outliers.
   if (keyMessages.length < MAX_SAMPLES && userMsgs.length > 0) {
-    const longest = userMsgs.reduce((a, b) => (b.text.length > a.text.length ? b : a));
+    const byLen = [...userMsgs].sort((a, b) => b.text.length - a.text.length);
+    const longest = byLen[0];
     if (longest && longest.text.length > 0) {
       keyMessages.push({
         session: fileName.replace(/\.jsonl$/, ''),
-        text: longest.text.slice(0, 300),
+        sampleType: 'longest',
+        text: longest.text.slice(0, 400),
         length: longest.text.length,
         labels: Object.keys(computeLabels(longest.text))
+      });
+    }
+    const median = byLen[Math.floor(byLen.length / 2)];
+    if (keyMessages.length < MAX_SAMPLES && median && median !== longest && median.text.length >= 40) {
+      keyMessages.push({
+        session: fileName.replace(/\.jsonl$/, ''),
+        sampleType: 'median',
+        text: median.text.slice(0, 400),
+        length: median.text.length,
+        labels: Object.keys(computeLabels(median.text))
       });
     }
   }
@@ -846,11 +1121,14 @@ for (const pos of POSITIONS) {
 }
 
 // ─── cwd resolution & project assets ─────────────────────────────────────
+// Pick the MOST FREQUENT cwd that exists on disk (mode). Ties break toward the
+// shortest path (closest to the project root). Sessions started from deep
+// subdirectories must not hijack CLAUDE.md / .claude detection.
 let resolvedCwd = null;
 if (cwdCandidates.size > 0) {
-  // Pick the most-common candidate that exists on disk
-  const sorted = [...cwdCandidates].sort((a, b) => b.length - a.length);
-  for (const c of sorted) {
+  const ranked = [...cwdCandidates.entries()]
+    .sort((a, b) => (b[1] - a[1]) || (a[0].length - b[0].length));
+  for (const [c] of ranked) {
     try {
       if (fs.existsSync(c) && fs.statSync(c).isDirectory()) { resolvedCwd = c; break; }
     } catch {}
@@ -921,7 +1199,8 @@ const toolcraftSummary = {
   planModeEntries: toolUsage.byCategory.planMode || 0,
   customCommands: Object.entries(toolUsage.customCommandsInvoked)
     .sort((a, b) => b[1] - a[1])
-    .map(([name, count]) => ({ name, count }))
+    .map(([name, count]) => ({ name, count })),
+  orchestration
 };
 
 // ─── Conversation flows (top 5 richest sessions) ─────────────────────────
@@ -959,44 +1238,33 @@ const firstMessage = {
 };
 
 // ─── Display name ─────────────────────────────────────────────────────────
+// Prefer the real directory basename from the resolved cwd. The slug loses
+// non-ASCII characters (Chinese dir names become runs of dashes) and its last
+// segment collides across projects ("radar", "mvp", "30"...).
 const slugParts = projectSlug.split('-').filter(Boolean);
-const displayName = slugParts[slugParts.length - 1] || projectSlug;
+const displayName = (resolvedCwd && path.basename(resolvedCwd)) ||
+  slugParts[slugParts.length - 1] || projectSlug;
 
-// ─── Language detection ───────────────────────────────────────────────────
+// ─── Language detection (full user-message corpus, tallied in main loop) ──
 // Strip code blocks, inline code, and file paths before counting — those
 // inflate English char counts even for Chinese-dominant users.
-// Use BOTH char-ratio and per-message-presence: many Chinese users mix
-// English file paths but think in Chinese.
-let zhChars = 0, enChars = 0;
-let zhMsgs = 0, totalMsgs = 0;
-function tallyLang(text) {
-  if (!text) return;
-  const cleaned = text
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/`[^`]+`/g, '')
-    .replace(/[\/\\][\w.@\-/\\]+\.\w+/g, '');
-  const zh = (cleaned.match(/[一-鿿]/g) || []).length;
-  const en = (cleaned.match(/[a-zA-Z]/g) || []).length;
-  zhChars += zh;
-  enChars += en;
-  totalMsgs++;
-  if (zh > 0) zhMsgs++;
-}
-for (const km of keyMessages) tallyLang(km.text);
-for (const se of sampleExchanges) tallyLang(se.human);
-for (const s of firstMessageAgg.samples) tallyLang(s);
-
 const charZhRatio = zhChars / Math.max(zhChars + enChars, 1);
-const msgZhRatio = zhMsgs / Math.max(totalMsgs, 1);
-// zh-dominant if 15% of cleaned letter-content is Chinese, OR 30% of sampled messages contain any Chinese
+const msgZhRatio = zhMsgs / Math.max(langMsgs, 1);
+// zh-dominant if 15% of cleaned letter-content is Chinese, OR 30% of messages contain any Chinese
 const dominantLanguage = (charZhRatio > 0.15 || msgZhRatio > 0.3) ? 'zh' : 'en';
+
+// ─── Tech stack actually mentioned by the user (top 10) ───────────────────
+const techStackDetected = Object.entries(techStackCounts)
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 10)
+  .map(([name, count]) => ({ name, count }));
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Output
 // ═════════════════════════════════════════════════════════════════════════════
 
 const result = {
-  schemaVersion: '2.0',
+  schemaVersion: '2.1',
   project: displayName,
   projectSlug,
   projectPath,
@@ -1010,6 +1278,7 @@ const result = {
   dateRange,
   projectProfile,
   projectAssets,
+  techStackDetected,
   stats,
   patterns,
   toolcraftSummary,
@@ -1021,7 +1290,22 @@ const result = {
   firstMessage,
   sessionFlows,
   keyMessages,
-  sampleExchanges
+  sampleExchanges,
+  dimensionEvidence
 };
 
-process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+if (outPath) {
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, JSON.stringify(result, null, 2) + '\n', 'utf-8');
+  process.stdout.write(JSON.stringify({
+    factsPath: outPath,
+    project: displayName,
+    sessionCount: stats.validSessions,
+    humanMessages: stats.humanMessages,
+    profileType: projectProfile.type,
+    confidenceLevel,
+    dominantLanguage
+  }, null, 2) + '\n');
+} else {
+  process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+}

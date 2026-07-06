@@ -18,7 +18,11 @@
 
 **⚖️ 按项目类型公平评分。** 3 条消息修完的 bug 不会和 50 个 session 的功能开发用同一把尺子。Claude Radar 自动归类（一次性 / 功能开发 / 长期 / 学习），按类别套用不同的权重和 N/A 规则。密度驱动的 confidence 让短但信号密集的会话不会被无理由打折。
 
-**🛠 专门评估你怎么用平台，不只是怎么说话。** 工程力类目衡量你对 Skill、MCP、Subagent、CLAUDE.md、Plan 模式、自定义命令的使用 —— 大多数用户都没用足的杠杆。**不用高级工具不扣分，用了但用不好（retry loop、Plan 进了又抛）才扣分。**
+**🛠 专门评估你怎么用平台，不只是怎么说话。** 工程力类目衡量你对 Skill、MCP、Subagent、**Workflow 编排、并行分发、后台任务**、CLAUDE.md、`.mcp.json`、hooks、Plan 模式、自定义命令的使用 —— 大多数用户都没用足的杠杆。**不用高级工具不扣分，用了但用不好（retry loop、Plan 进了又抛）才扣分。**
+
+**📦 建议不止是话术，还是可安装的资产。** `setup` 类建议直接附上文件内容 —— CLAUDE.md 章节、hook 配置、`.mcp.json` 条目、自定义命令 —— 出自一个开源的、按触发条件匹配的招式库（`data/playbook.json`），再用你的真实会话证据个性化。
+
+**📈 记录你的进步。** 报告本地归档；每次重跑都会显示距上次体检的分数变化，并自动检测哪些历史建议真的被采纳了（CLAUDE.md 建了没、hooks 配了没、Plan 模式用起来没）。
 
 **🔒 全本地，零数据上传。** 只读访问本地项目对话记录，不发任何网络请求、无 API key、无云端。原生中英双语报告。输出一个专业可读的 HTML dashboard。
 
@@ -117,8 +121,8 @@ claude --plugin-dir ~/claude-radar
 
 **两层模型：**
 
-1. **评分层** —— 确定性公式基线 + Claude ±15 微调（必须引用证据）。整体方差约 ±3 分。
-2. **诊断层** —— 独立的定性分析。150 字协作画像 + 核心诊断 + 交叉解读。
+1. **评分层** —— 基线**全部由脚本计算**（`compute-baselines.mjs` 执行 `rubric.json` 里的结构化公式），零运行方差；Claude 只做 ±15 微调,且必须引用证据,否则保持 0。
+2. **诊断层** —— 独立的定性分析。150 字协作画像 + 核心诊断 + 交叉解读，全部锚定在解析器专门抽取的"维度证据瞬间"上。
 
 **公允性机制：**
 
@@ -140,7 +144,7 @@ claude --plugin-dir ~/claude-radar
 - 诊断层和建议层的产出规范
 - 密度驱动的 confidence 缩放
 
-想让评分更贴合团队习惯？改这个文件就行，Claude 每次跑都重新读。
+想让评分更贴合团队习惯？改这个文件就行，评分引擎每次运行都重新读。建议招式同理，都在 [`data/playbook.json`](./data/playbook.json)：每条招式 = 触发条件 + 双语文案 + 可选的可安装资产模板。改完记得跑 `node test/run.mjs`。
 
 ---
 
@@ -150,19 +154,23 @@ claude --plugin-dir ~/claude-radar
 claude-radar/
 ├── .claude-plugin/plugin.json        # 插件清单
 ├── skills/analyze/
-│   ├── SKILL.md                      # cwd 检测 + 9 维评分 + 诊断流程
+│   ├── SKILL.md                      # 流程：检测 → 解析 → 基线 → 微调/诊断 → 渲染
 │   └── scripts/
 │       ├── list-projects.mjs         # 扫项目 + cwd 匹配
-│       ├── parse-project.mjs         # 信号提取（工具 / skill / MCP / CLAUDE.md 检测）
-│       └── render-report.mjs         # JSON → HTML
+│       ├── parse-project.mjs         # 信号提取（注入过滤、编排信号、斜杠命令、资产、维度证据）
+│       ├── compute-baselines.mjs     # 确定性评分 + 招式触发匹配 + 上次报告对比
+│       └── render-report.mjs         # JSON → HTML + 历史归档
 ├── viewer/template.html              # Dashboard 报告模板
-├── data/rubric.json                  # 9 维公式 + 画像权重 + 诊断规范
+├── data/
+│   ├── rubric.json                   # 9 维结构化公式 + 画像权重 + 诊断规范
+│   └── playbook.json                 # 30+ 条按条件触发的建议招式（含资产模板）
+├── test/run.mjs                      # 回归测试（fixtures + 基线算术 + 触发器）
 └── docs/
     ├── METHODOLOGY.md                # 方法论（英文）
     └── METHODOLOGY_zh.md             # 方法论（中文）
 ```
 
-约 250 KB，零运行时依赖。
+约 300 KB，零运行时依赖。跑 `node test/run.mjs` 可验证确定性层。
 
 ---
 

@@ -1,4 +1,4 @@
-# Claude Radar 
+# Claude Radar （Optimized with Fable 5）
 
 > **A Claude Code plugin that reads your project conversation records and grades how well you collaborate with AI.** 9 dimensions across 3 categories — Communication, Engineering, Outcome. Returns a free-form AI diagnosis, at-least-5 pastable improvement prompts, and a professional, readable HTML dashboard. 100% local.
 

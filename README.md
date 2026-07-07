@@ -1,10 +1,12 @@
-# Claude Radar
+# Claude Radar 
 
 > **A Claude Code plugin that reads your project conversation records and grades how well you collaborate with AI.** 9 dimensions across 3 categories — Communication, Engineering, Outcome. Returns a free-form AI diagnosis, at-least-5 pastable improvement prompts, and a professional, readable HTML dashboard. 100% local.
 
 🌏 [中文版](./README_zh.md) · 📖 [Methodology](./docs/METHODOLOGY.md) · 🖥 [Live preview](https://leifdiao.github.io/claude-radar/) · ⚖️ [License](./LICENSE)
 
 > **中文简介：** 一款 Claude Code 插件，读取你的项目对话记录，从「沟通力 / 工程力 / 成效」三个层面、9 个维度评估你和 AI 的协作质量。输出一份 AI 撰写的协作诊断、至少 5 条可直接粘贴的改写 prompt，以及一个专业可读的 HTML dashboard。所有计算 100% 本地完成。完整中文文档 → [README_zh.md](./README_zh.md)
+
+<img width="1899" height="1191" alt="Screenshot 2026-07-08 at 9 54 12 AM" src="https://github.com/user-attachments/assets/2af5fece-d613-453e-b327-7e0f2fd0a970" />
 
 ---
 

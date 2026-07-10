@@ -111,6 +111,20 @@
     font-size:11px; font-weight:700; color:var(--accent-2); letter-spacing:.6px; margin-bottom:24px;
   }
   .hero-badge .dot { width:6px; height:6px; border-radius:50%; background:var(--accent); animation:dotPulse 2.4s ease-in-out infinite; }
+  .hero-pills { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:24px; }
+  .hero-pills .hero-badge { margin-bottom:0; }
+  .promo-pill {
+    display:inline-flex; align-items:center; gap:7px;
+    padding:7px 16px; border-radius:999px; text-decoration:none;
+    background:var(--accent-soft); border:1px solid var(--accent-line);
+    font-size:11px; font-weight:700; color:var(--accent-deep); letter-spacing:.4px;
+    transition:all .18s;
+  }
+  .promo-pill:hover { border-color:var(--accent-deep); transform:translateY(-1px); }
+  .promo-pill .tag {
+    font-size:9px; padding:2px 7px; border-radius:999px;
+    background:var(--accent-deep); color:#fff; letter-spacing:.8px;
+  }
   .hero h1 {
     font-family:var(--font-serif);
     font-size:clamp(36px,5.2vw,58px); font-weight:500; letter-spacing:-1px;
@@ -368,7 +382,10 @@
   <!-- ═══ HERO ═══ -->
   <section class="hero">
     <div class="hero-text">
-      <div class="hero-badge"><span class="dot"></span><span data-en="CLAUDE CODE PLUGIN" data-zh="CLAUDE CODE 插件">CLAUDE CODE PLUGIN</span></div>
+      <div class="hero-pills">
+        <div class="hero-badge"><span class="dot"></span><span data-en="CLAUDE CODE PLUGIN" data-zh="CLAUDE CODE 插件">CLAUDE CODE PLUGIN</span></div>
+        <a class="promo-pill" href="https://github.com/LeifDiao/claude-radar#whats-new-in-v12"><span class="tag">v1.2</span><span data-en="Report redesigned with Claude (Fable 5) — radar chart, key findings first →" data-zh="报告由 Claude (Fable 5) 重塑 — 雷达图、重点内容前置 →">Report redesigned with Claude (Fable 5) — radar chart, key findings first →</span></a>
+      </div>
       <h1 data-en="See exactly how<br><span class='g'>you work with Claude.</span>" data-zh="看清你和 Claude<br><span class='g'>到底配合得怎么样</span>">See exactly how<br><span class="g">you work with Claude.</span></h1>
       <p class="hero-sub" data-en="Claude Radar reads your real project conversations and surfaces your collaboration blind spots across 9 dimensions in 3 categories — Communication, Engineering, Outcome — with Engineering looking at how far you push Claude Code's platform leverage (Skill / MCP / Subagent / CLAUDE.md / Plan). Beyond the scores, it writes a diagnosis that actually pins down your habits, plus at least 5 rewrite prompts you can paste straight into your next session. Work smoother next time — and level up for real." data-zh="Claude Radar 读你真实的项目对话，从沟通力、工程力、成效三类 9 个维度拉出你的协作短板——工程力这块专看你把 Claude Code 的平台杠杆（Skill / MCP / Subagent / CLAUDE.md / Plan）用到了几成。除了分数，它还会写一段戳到你本人的诊断，再给至少 5 条能直接粘回下次会话的改写话术。下次配合更顺，能力也跟着练上来。">Claude Radar reads your real project conversations and surfaces your collaboration blind spots across 9 dimensions in 3 categories — Communication, Engineering, Outcome — with Engineering looking at how far you push Claude Code's platform leverage (Skill / MCP / Subagent / CLAUDE.md / Plan). Beyond the scores, it writes a diagnosis that actually pins down your habits, plus at least 5 rewrite prompts you can paste straight into your next session. Work smoother next time — and level up for real.</p>
       <div class="hero-cta">
@@ -387,41 +404,12 @@
           </svg>
           Claude Radar
         </div>
-        <div class="preview-meta" data-en="sample report" data-zh="示例报告">sample report</div>
+        <div class="preview-meta" data-en="sample report · v1.2" data-zh="示例报告 · v1.2">sample report · v1.2</div>
       </div>
-      <div class="preview-hero">
-        <div>
-          <div class="preview-profile"><span style="width:5px;height:5px;border-radius:50%;background:currentColor;"></span><span data-en="LONG-RUNNING" data-zh="长期项目">LONG-RUNNING</span></div>
-          <div class="preview-insight" data-en="You command Claude precisely, but rarely ask it to second-guess itself." data-zh="你指挥 Claude 很精准，但几乎不让它质疑自己。">You command Claude precisely, but rarely ask it to second-guess itself.</div>
-        </div>
-        <div style="text-align:right">
-          <div class="preview-grade-letter">A</div>
-          <div class="preview-grade-score">74 / 100</div>
-        </div>
-      </div>
-      <div class="preview-cats">
-        <div class="preview-cat" data-c="comm">
-          <div class="preview-cat-name" data-en="Comm" data-zh="沟通力">Comm</div>
-          <div class="preview-cat-score">
-            <span class="preview-cat-num" style="color:var(--grade-a)">78</span>
-            <span class="preview-cat-grade" style="background:rgba(62,124,107,0.16);color:var(--grade-a)">A</span>
-          </div>
-        </div>
-        <div class="preview-cat" data-c="eng">
-          <div class="preview-cat-name" data-en="Eng" data-zh="工程力">Eng</div>
-          <div class="preview-cat-score">
-            <span class="preview-cat-num" style="color:var(--grade-b)">62</span>
-            <span class="preview-cat-grade" style="background:rgba(176,124,50,0.16);color:var(--grade-b)">B</span>
-          </div>
-        </div>
-        <div class="preview-cat" data-c="out">
-          <div class="preview-cat-name" data-en="Out" data-zh="成效">Out</div>
-          <div class="preview-cat-score">
-            <span class="preview-cat-num" style="color:var(--grade-a)">80</span>
-            <span class="preview-cat-grade" style="background:rgba(62,124,107,0.16);color:var(--grade-a)">A</span>
-          </div>
-        </div>
-      </div>
+      <a id="previewLink" href="report_sample.png" target="_blank" rel="noopener">
+        <img id="previewImg" src="report_sample.png" alt="Claude Radar sample report"
+             style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--border-1);">
+      </a>
     </div>
   </section>
 
@@ -652,6 +640,11 @@
       if (el && el.href) el.href = base + f;
     });
     document.getElementById('langToggle').textContent = lang === 'zh' ? 'EN' : '中文';
+    const shot = lang === 'zh' ? 'report_sample_zh.png' : 'report_sample.png';
+    const pImg = document.getElementById('previewImg');
+    const pLink = document.getElementById('previewLink');
+    if (pImg) pImg.src = shot;
+    if (pLink) pLink.href = shot;
     document.documentElement.lang = lang;
   }
   document.getElementById('langToggle').addEventListener('click', () => {

@@ -6,7 +6,7 @@
 
 > **中文简介：** 一款 Claude Code 插件，读取你的项目对话记录，从「沟通力 / 工程力 / 成效」三个层面、9 个维度评估你和 AI 的协作质量。输出一份 AI 撰写的协作诊断、至少 5 条可直接粘贴的改写 prompt，以及一个专业可读的 HTML dashboard。所有计算 100% 本地完成。完整中文文档 → [README_zh.md](./README_zh.md)
 
-<img width="1899" height="1191" alt="Screenshot 2026-07-08 at 9 54 12 AM" src="https://github.com/user-attachments/assets/2af5fece-d613-453e-b327-7e0f2fd0a970" />
+<img alt="Claude Radar report — v1.2 editorial redesign" src="./docs/report_sample.png" />
 
 ---
 
@@ -55,8 +55,6 @@ The scoring pipeline (deterministic baselines, playbook triggers, longitudinal t
 ## What the report includes
 
 Run `/claude-radar` and get a single-file HTML report, designed to read like a check-up from a coach — most important things first:
-
-![Report sample](./docs/report_sample.png)
 
 **The verdict** — your S–D grade, a one-sentence coach's wake-up call, and a 9-dimension radar chart, side by side. Your project profile is always shown so you know what scale you're being judged on. If you've run a check-up before, score deltas and adopted suggestions appear right below.
 

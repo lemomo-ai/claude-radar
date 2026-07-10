@@ -39,7 +39,7 @@
          ▼
     [Claude in the skill]        ← Bounded ±15 evidence-cited adjustment + diagnosis + suggestion
          │                          instantiation. Claude never does baseline arithmetic.
-         │ report.json (schemaVersion 2.1)
+         │ report.json (schemaVersion 2.2)
          ▼
    [render-report.mjs]           ← Pure transform. JSON + template → HTML dashboard.
          │                          Archives report JSON to ~/.claude-radar/history/<slug>/.

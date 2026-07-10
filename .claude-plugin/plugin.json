@@ -1,7 +1,7 @@
 {
   "name": "claude-radar",
   "description": "Review your Claude Code collaboration across 9 dimensions in 3 categories (Communication / Engineering / Outcome) — deterministic script-computed baselines, a free-form AI diagnosis, and 5-7 playbook-driven suggestions with pastable prompts and installable assets (hooks, CLAUDE.md sections, .mcp.json). Tracks score deltas since your last check-up. 100% local single-file HTML report.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": {
     "name": "Leif Diao",
     "email": "leifdiao@gmail.com",

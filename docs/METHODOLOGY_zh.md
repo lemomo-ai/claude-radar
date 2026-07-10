@@ -39,7 +39,7 @@
          ▼
     [Claude in the skill]        ← 有界 ±15 引证微调 + 诊断 + 建议实例化。
          │                          Claude 从不做基线算术。
-         │ report.json (schemaVersion 2.1)
+         │ report.json (schemaVersion 2.2)
          ▼
    [render-report.mjs]           ← 纯转换。JSON + 模板 → HTML dashboard。
          │                          报告 JSON 归档到 ~/.claude-radar/history/<slug>/。

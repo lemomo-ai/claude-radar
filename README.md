@@ -40,26 +40,35 @@
 
 ---
 
+## What's new in v1.2
+
+The report page was redesigned from the ground up with **Claude (Fable 5)** — from a metrics dashboard into an editorial check-up report:
+
+- **New report UI** — warm editorial layout, a 9-dimension radar chart front and center, light/dark themes, refined typography.
+- **The important stuff surfaced first** — report schema 2.2 adds structured `highlights` (your strength & bottleneck as first-class data) and `isKeyAction` flags, so Key Findings and the top 1-2 actions lead the page instead of hiding among equal-weight cards.
+- **Fully backward compatible** — archived 2.1 reports render fine in the new template.
+
+The scoring pipeline (deterministic baselines, playbook triggers, longitudinal tracking) is unchanged.
+
+---
+
 ## What the report includes
 
-Run `/claude-radar` and get a single-file, professional, readable HTML dashboard:
+Run `/claude-radar` and get a single-file HTML report, designed to read like a check-up from a coach — most important things first:
 
-**Overall grade** — S through D, paired with your project profile so you know what scale you're being judged on.
+![Report sample](./docs/report_sample.png)
 
-**Three category scorecards** — each scoring 0-100 with its 3 dimensions:
+**The verdict** — your S–D grade, a one-sentence coach's wake-up call, and a 9-dimension radar chart, side by side. Your project profile is always shown so you know what scale you're being judged on. If you've run a check-up before, score deltas and adopted suggestions appear right below.
 
-```
-  COMMUNICATION  78  [A]    ENGINEERING  62  [B]    OUTCOME  80  [A]
-  Lock-On        82          Toolcraft    68         Efficiency   88
-  Scene Setting  71          Architecture N/A        Proof Check  62
-  Steering       81          Tempo        56         Completion   90
-```
+**Key Findings** — your strongest edge and sharpest bottleneck as two highlighted cards, each anchored to the dimension it comes from, plus a cross-dimension reading of how your behaviors combine. This is the part most users find valuable.
 
-**Diagnosis** — core insight (strength + bottleneck), a free-form collaboration profile, and a cross-dimension pattern reading. This is the part most users find valuable.
+**Do These Next** — the 1-2 highest-leverage suggestions as large numbered cards with the pastable prompt front and center; the remaining 3-5 fold into an accordion. Every suggestion carries cited evidence, a copy-paste prompt rewrite, and the expected score impact — `setup` moves also ship the installable file content. High-scoring users get "level-up moves" instead of corrective ones.
 
-**Improvement plan** — 5-7 suggestions (always at least 5, even for high-scoring users), each with cited evidence, a pastable prompt rewrite, and the expected score impact. High-scoring users get "level-up moves" instead of corrective ones.
+**Nine Dimensions** — compact score rows grouped by category (Communication / Engineering / Outcome); click any row to expand the full scoring rationale and evidence.
 
-**Drill-downs** — detailed reasoning for each of the 9 dimensions, plus a Toolcraft & Architecture detail panel showing skills used, MCP servers, Plan mode usage, CLAUDE.md status, and more.
+**Collaboration Profile & appendix** — a free-form narrative of how you specifically work with AI, plus a collapsed appendix with tool usage, orchestration stats, and project-asset detection (CLAUDE.md, hooks, skills…).
+
+Light & dark themes, English/中文 toggle, print-friendly.
 
 ---
 

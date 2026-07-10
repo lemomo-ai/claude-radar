@@ -146,6 +146,21 @@ Format: "**Strength**: [trait] — [evidence]. **Bottleneck**: [trait] — [evid
 
 How the scores combine: "High Toolcraft + low Architecture = you use the platform brilliantly in flight but rebuild the runway every morning."
 
+### 7d — `highlights` (REQUIRED — structured strength/bottleneck)
+
+The structured mirror of `coreDiagnosis`, rendered as the two highlight cards at the top of the report:
+
+```jsonc
+"highlights": {
+  "strength":   { "dimensionId": "efficiency", "text": {"en": "...", "zh": "..."} },
+  "bottleneck": { "dimensionId": "context",    "text": {"en": "...", "zh": "..."} }
+}
+```
+
+- `text` is a self-contained 1-3 sentence version — do NOT include the "**Strength**:" / "**瓶颈**：" prefix (the card label carries that).
+- `dimensionId` anchors each card to the dimension it's about (shown as a tag on the card).
+- Same evidence-cited standard as `coreDiagnosis`; it's fine for the two to overlap in content.
+
 ---
 
 ## Step 8 — Suggestions: instantiate from candidateMoves (MINIMUM 5, UP TO 7)
@@ -153,6 +168,7 @@ How the scores combine: "High Toolcraft + low Architecture = you use the platfor
 **Primary source: `candidateMoves`.** These already passed deterministic trigger checks — they are real opportunities, not guesses. Your job:
 
 1. **Select 5-7** moves. Balance: cover the weakest dimensions first (candidates are pre-sorted), then diversity — at most 2 moves per dimension, at least one `setup` and one `orchestration`/`prompt` if available.
+   Mark the **1-2 most important** with `"isKeyAction": true` and place them first — the report renders them as large numbered "Do These Next" cards; the rest collapse into an accordion. Key actions should be the highest-leverage, most immediately actionable moves (usually the `high`-priority ones).
 2. **Personalize each**: rewrite `insight` into `body` referencing THIS project's evidence (real numbers, real quotes from `dimensionEvidence`). Fill `evidence` with a concrete cited moment.
 3. **Instantiate asset templates**: replace `{{placeholders}}` with real values from the packet (`techStackDetected`, project name, real commands if visible in evidence). If a placeholder can't be grounded, keep a clearly-marked `<fill-in>` slot.
 4. **Priority** from the dimension's final score: D/C → high, B → medium, A/S → low.
@@ -164,6 +180,7 @@ How the scores combine: "High Toolcraft + low Architecture = you use the platfor
 {
   "dimensionId": "verification",
   "priority": "high",
+  "isKeyAction": true,                // 1-2 suggestions only — rendered as the big numbered cards
   "actionType": "setup",              // prompt | habit | setup | orchestration (from the move)
   "playbookId": "hook-verification-loop",   // omit for hand-rolled suggestions
   "title": {"en": "Automate the checking", "zh": "让检查自动发生"},
@@ -184,11 +201,11 @@ How the scores combine: "High Toolcraft + low Architecture = you use the platfor
 
 ---
 
-## Step 9 — Assemble the report JSON 2.1
+## Step 9 — Assemble the report JSON 2.2
 
 ```jsonc
 {
-  "schemaVersion": "2.1",
+  "schemaVersion": "2.2",
   "project": "<displayName>",
   "projectSlug": "<packet.projectSlug>",     // REQUIRED — history archiving keys on this
   "generatedAt": "<ISO timestamp>",
@@ -204,6 +221,12 @@ How the scores combine: "High Toolcraft + low Architecture = you use the platfor
     // GOOD: "You ship fast — but you ship blind."
     // BAD:  "Your communication score is 78." / "你很棒。"
     "en": "...", "zh": "..."
+  },
+
+  "highlights": {
+    // REQUIRED — per Step 7d. Rendered as the Strength / Bottleneck highlight cards.
+    "strength":   { "dimensionId": "...", "text": {"en": "...", "zh": "..."} },
+    "bottleneck": { "dimensionId": "...", "text": {"en": "...", "zh": "..."} }
   },
 
   "profile": {

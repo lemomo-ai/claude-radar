@@ -2,7 +2,7 @@
 
 > **一款 Claude Code 插件，读取你的项目对话记录，评估你和 AI 协作的质量。** 从「沟通力 / 工程力 / 成效」三个层面、9 个维度打分，输出 AI 自由撰写的诊断、至少 5 条可直接粘贴的 prompt 改写，以及一个专业可读的 HTML dashboard。全程本地。
 
-🌏 [English](./README.md) · 📖 [方法论](./docs/METHODOLOGY_zh.md) · 🖥 [在线预览](https://leifdiao.github.io/claude-radar/) · ⚖️ [协议](./LICENSE)
+🌏 [English](./README.md) · 📖 [方法论](./docs/METHODOLOGY_zh.md) · 🖥 [在线预览](https://lemomo-ai.github.io/claude-radar/) · ⚖️ [协议](./LICENSE)
 
 > **English summary:** A Claude Code plugin that reads your project conversation records and grades how you collaborate with AI across 9 dimensions in 3 categories. Returns an AI-written diagnosis, at-least-5 pastable improvement prompts, and a professional, readable HTML dashboard. 100% local. Full English docs → [README.md](./README.md)
 
@@ -75,7 +75,7 @@
 **第一步** —— 添加插件市场：
 
 ```
-/plugin marketplace add LeifDiao/claude-radar
+/plugin marketplace add lemomo-ai/claude-radar
 ```
 
 **第二步** —— 安装插件：
@@ -87,7 +87,7 @@
 **本地安装：**
 
 ```bash
-git clone https://github.com/LeifDiao/claude-radar.git ~/claude-radar
+git clone https://github.com/lemomo-ai/claude-radar.git ~/claude-radar
 claude --plugin-dir ~/claude-radar
 ```
 

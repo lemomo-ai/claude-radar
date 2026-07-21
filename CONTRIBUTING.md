@@ -37,7 +37,7 @@ node skills/analyze/scripts/render-report.mjs <report-json-path>
 Then test the installed experience by adding the repo as a marketplace and reinstalling:
 
 ```
-/plugin marketplace add LeifDiao/claude-radar
+/plugin marketplace add lemomo-ai/claude-radar
 /plugin install claude-radar@claude-radar-marketplace
 ```
 

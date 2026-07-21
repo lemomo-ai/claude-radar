@@ -5,10 +5,10 @@
   "author": {
     "name": "Leif Diao",
     "email": "leifdiao@gmail.com",
-    "url": "https://github.com/LeifDiao"
+    "url": "https://github.com/lemomo-ai"
   },
   "license": "CC-BY-NC-4.0",
-  "homepage": "https://leifdiao.github.io/claude-radar/",
-  "repository": "https://github.com/LeifDiao/claude-radar",
+  "homepage": "https://lemomo-ai.github.io/claude-radar/",
+  "repository": "https://github.com/lemomo-ai/claude-radar",
   "keywords": ["analysis", "collaboration", "productivity", "diagnostics", "claude-code"]
 }

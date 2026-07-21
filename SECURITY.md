@@ -4,7 +4,7 @@ Claude Radar reads your local Claude Code session history under `~/.claude/proje
 
 ## Reporting Issues
 
-Private report via GitHub security advisories when available, or contact the maintainer through the GitHub profile linked in this repo (https://github.com/LeifDiao).
+Private report via GitHub security advisories when available, or contact the maintainer through the GitHub profile linked in this repo (https://github.com/lemomo-ai).
 
 ## Scope
 

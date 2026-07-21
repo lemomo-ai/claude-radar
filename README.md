@@ -1,90 +1,90 @@
-# Claude Radar （Optimized with Fable 5）
+# Claude Radar
 
-> **A Claude Code plugin that reads your project conversation records and grades how well you collaborate with AI.** 9 dimensions across 3 categories — Communication, Engineering, Outcome. Returns a free-form AI diagnosis, at-least-5 pastable improvement prompts, and a professional, readable HTML dashboard. 100% local.
+> **一款 Claude Code 插件，读取你的项目对话记录，评估你和 AI 协作的质量。** 从「沟通力 / 工程力 / 成效」三个层面、9 个维度打分，输出 AI 自由撰写的诊断、至少 5 条可直接粘贴的 prompt 改写，以及一个专业可读的 HTML dashboard。全程本地。
 
-🌏 [中文版](./README_zh.md) · 📖 [Methodology](./docs/METHODOLOGY.md) · 🖥 [Live preview](https://lemomo-ai.github.io/claude-radar/) · ⚖️ [License](./LICENSE)
+🌏 [English](./README_en.md) · 📖 [方法论](./docs/METHODOLOGY_zh.md) · 🖥 [在线预览](https://lemomo-ai.github.io/claude-radar/) · ⚖️ [协议](./LICENSE)
 
-> **中文简介：** 一款 Claude Code 插件，读取你的项目对话记录，从「沟通力 / 工程力 / 成效」三个层面、9 个维度评估你和 AI 的协作质量。输出一份 AI 撰写的协作诊断、至少 5 条可直接粘贴的改写 prompt，以及一个专业可读的 HTML dashboard。所有计算 100% 本地完成。完整中文文档 → [README_zh.md](./README_zh.md)
-
-<img alt="Claude Radar report — v1.2 editorial redesign" src="./docs/report_sample.png" />
+> **English summary:** A Claude Code plugin that reads your project conversation records and grades how you collaborate with AI across 9 dimensions in 3 categories. Returns an AI-written diagnosis, at-least-5 pastable improvement prompts, and a professional, readable HTML dashboard. 100% local. Full English docs → [README_en.md](./README_en.md)
 
 ---
 
-## Key features
+## 核心特性
 
-**🎯 Reads your actual sessions, not synthetic prompts.** Most "AI productivity" tools test you on contrived examples. Claude Radar analyzes the real conversations you've had with Claude — every directing, correcting, and confirming message, plus every tool call you made.
+**🎯 评估你真实的项目对话记录，不靠人工题库。** 大多数"AI 协作分析"工具用合成提示考你，Claude Radar 分析你这个月真的和 Claude 聊过的内容 —— 每条 directing / correcting / confirming 消息、每次工具调用都被纳入评估。
 
-**💬 AI writes you a coaching note, not just a scoreboard.** Beyond the 9 scores, you get a 150-word collaboration profile that describes how *you specifically* work with AI, a one-paragraph core diagnosis pairing your strongest strength with your most critical bottleneck, and a cross-dimension reading that explains how your behaviors combine. Every claim cites evidence from your real session.
+**💬 AI 给你写诊断信，而不是只给分数。** 9 个分数之外，你会拿到一份 150 字的协作画像（描述你具体的协作方式）、一段"强项 + 瓶颈"核心诊断、维度交叉解读，每条结论都引用真实证据。
 
-**📋 Every suggestion is a pastable prompt.** No "be more thoughtful" advice. Each of the 5–7 improvement suggestions comes with a concrete prompt you can copy-paste straight into your next session, plus the expected score impact and the trade-off.
+**📋 每条建议都带可粘贴 prompt。** 不讲"要多思考"这种空话。5–7 条改进建议每条都附一段下次会话可以直接复制粘贴的具体话术，外加预期分数影响和取舍说明。
 
-**⚖️ Project-aware fairness.** A 3-message bugfix isn't compared to a 50-session feature build. Claude Radar auto-classifies each project (`one-shot` / `feature-build` / `long-running` / `learning`) and applies different category weights and N/A rules. Density-based confidence prevents short-but-substantive sessions from being unfairly shrunk.
+**⚖️ 按项目类型公平评分。** 3 条消息修完的 bug 不会和 50 个 session 的功能开发用同一把尺子。Claude Radar 自动归类（一次性 / 功能开发 / 长期 / 学习），按类别套用不同的权重和 N/A 规则。密度驱动的 confidence 让短但信号密集的会话不会被无理由打折。
 
-**🛠 Scores how you use the platform, not just how you talk.** The Engineering category measures Skills, MCP servers, Subagents, **Workflow orchestration, parallel fan-out, background tasks**, CLAUDE.md, `.mcp.json`, hooks, Plan mode, and custom commands — the leverage most users underuse. Not using advanced tools is fine; using them poorly (retry loops, plan-then-abandon) is what hurts.
+**🛠 专门评估你怎么用平台，不只是怎么说话。** 工程力类目衡量你对 Skill、MCP、Subagent、**Workflow 编排、并行分发、后台任务**、CLAUDE.md、`.mcp.json`、hooks、Plan 模式、自定义命令的使用 —— 大多数用户都没用足的杠杆。**不用高级工具不扣分，用了但用不好（retry loop、Plan 进了又抛）才扣分。**
 
-**📦 Suggestions ship as installable assets.** Beyond pastable prompts, `setup`-type suggestions include the actual file content — a CLAUDE.md section, a hook config, an `.mcp.json` entry, a custom command — drawn from an open, trigger-matched playbook (`data/playbook.json`) and personalized with your session evidence.
+**📦 建议不止是话术，还是可安装的资产。** `setup` 类建议直接附上文件内容 —— CLAUDE.md 章节、hook 配置、`.mcp.json` 条目、自定义命令 —— 出自一个开源的、按触发条件匹配的招式库（`data/playbook.json`），再用你的真实会话证据个性化。
 
-**📈 Tracks your progress.** Reports are archived locally; each new run shows score deltas since your last check-up and detects which past suggestions you actually adopted (CLAUDE.md created, hooks configured, plan mode in use…).
+**📈 记录你的进步。** 报告本地归档；每次重跑都会显示距上次体检的分数变化，并自动检测哪些历史建议真的被采纳了（CLAUDE.md 建了没、hooks 配了没、Plan 模式用起来没）。
 
-**🔒 100% local, zero telemetry.** Read-only access to your local Claude Code project records. No API key, no cloud, no network calls. Bilingual (English + 中文) reports built in.
+**🔒 全本地，零数据上传。** 只读访问本地项目对话记录，不发任何网络请求、无 API key、无云端。原生中英双语报告。输出一个专业可读的 HTML dashboard。
 
-> **中文要点：**
-> - **🎯 评估你真实的项目对话记录**，不靠人工题库
-> - **💬 AI 给你写诊断信**：协作画像 + 强项/瓶颈段 + 维度交叉解读，每条结论都引用真实证据
-> - **📋 每条建议都附可粘贴 prompt**，不讲空话；附预期分数影响和取舍说明
-> - **⚖️ 按项目类型公平评分**：bugfix 不和大项目用同一把尺子，密度高的短会话不会被打压
-> - **🛠 专门评估平台杠杆**：Skill / MCP / Subagent / CLAUDE.md / Plan 模式 —— 不用不扣分，用得差才扣分
-> - **🔒 100% 本地，零数据上传**，原生中英双语，输出专业可读的 HTML dashboard
+> **English highlights:**
+> - **🎯 Reads your real project conversation records**, not synthetic prompts
+> - **💬 AI writes a coaching note** with evidence — not just scores
+> - **📋 Every suggestion is a pastable prompt** + expected impact
+> - **⚖️ Project-aware fairness** — a bugfix isn't compared to a big feature
+> - **🛠 Evaluates platform leverage** (Skill / MCP / Subagent / CLAUDE.md / Plan mode)
+> - **🔒 100% local, zero telemetry**, bilingual, professional, readable HTML dashboard
 >
-> 完整中文版 → [README_zh.md](./README_zh.md)
+> Full English version → [README_en.md](./README_en.md)
 
 ---
 
-## What's new in v1.2
+## v1.2 更新了什么
 
-The report page was redesigned from the ground up with **Claude (Fable 5)** — from a metrics dashboard into an editorial check-up report:
+报告页面由 **Claude (Fable 5)** 从头重塑 —— 从指标仪表盘变成一份「体检报告」：
 
-- **New report UI** — warm editorial layout, a 9-dimension radar chart front and center, light/dark themes, refined typography.
-- **The important stuff surfaced first** — report schema 2.2 adds structured `highlights` (your strength & bottleneck as first-class data) and `isKeyAction` flags, so Key Findings and the top 1-2 actions lead the page instead of hiding among equal-weight cards.
-- **Fully backward compatible** — archived 2.1 reports render fine in the new template.
+- **全新报告 UI** —— 暖色编辑排版、首屏 9 维雷达图、明暗双主题、更讲究的字体层次。
+- **重点内容前置** —— report schema 升级到 2.2，新增结构化的 `highlights`（最强项/最大瓶颈成为一等数据）和 `isKeyAction` 标记，重点评价和前 1-2 条重点建议直接领衔整页，不再淹没在等权重的卡片里。
+- **完全向后兼容** —— 已归档的 2.1 报告在新模板下照常渲染。
 
-The scoring pipeline (deterministic baselines, playbook triggers, longitudinal tracking) is unchanged.
-
----
-
-## What the report includes
-
-Run `/claude-radar` and get a single-file HTML report, designed to read like a check-up from a coach — most important things first:
-
-**The verdict** — your S–D grade, a one-sentence coach's wake-up call, and a 9-dimension radar chart, side by side. Your project profile is always shown so you know what scale you're being judged on. If you've run a check-up before, score deltas and adopted suggestions appear right below.
-
-**Key Findings** — your strongest edge and sharpest bottleneck as two highlighted cards, each anchored to the dimension it comes from, plus a cross-dimension reading of how your behaviors combine. This is the part most users find valuable.
-
-**Do These Next** — the 1-2 highest-leverage suggestions as large numbered cards with the pastable prompt front and center; the remaining 3-5 fold into an accordion. Every suggestion carries cited evidence, a copy-paste prompt rewrite, and the expected score impact — `setup` moves also ship the installable file content. High-scoring users get "level-up moves" instead of corrective ones.
-
-**Nine Dimensions** — compact score rows grouped by category (Communication / Engineering / Outcome); click any row to expand the full scoring rationale and evidence.
-
-**Collaboration Profile & appendix** — a free-form narrative of how you specifically work with AI, plus a collapsed appendix with tool usage, orchestration stats, and project-asset detection (CLAUDE.md, hooks, skills…).
-
-Light & dark themes, English/中文 toggle, print-friendly.
+评分管线（确定性基线、playbook 触发、纵向追踪）保持不变。
 
 ---
 
-## Install
+## 报告里有什么
 
-**Step 1** — Add the marketplace:
+运行 `/claude-radar`，你会得到一个单文件 HTML 报告，按「教练体检报告」的思路排布 —— 最重要的内容永远在最前面：
+
+![报告示例](./docs/report_sample_zh.png)
+
+**总评判定** —— S–D 等级、一句话点醒你的核心洞察、9 维雷达图并排呈现。项目画像类型永远标注在旁，让你知道自己是用什么尺子被量。做过体检的项目还会在下方直接显示分数变化和已落地的建议。
+
+**重点评价** —— 最强项和最大瓶颈做成两张高亮卡，各自锚定到对应维度，配一段维度交叉解读。**这是用户最看重的部分。**
+
+**重点建议** —— 杠杆最大的 1-2 条建议放大成编号大卡，可粘贴 prompt 前置；其余 3-5 条折叠成手风琴。每条都带真实证据、可复制的 prompt 改写、预期分数影响 —— `setup` 类建议还附带可直接安装的文件内容。高分用户拿到的是 "level-up" 进阶动作而非纠错。
+
+**九维得分** —— 按「沟通力 / 工程力 / 成效」分组的紧凑得分行，点开任意一行看完整评分依据和证据。
+
+**协作画像与附录** —— 一段专属于你的协作方式白描，外加默认折叠的附录：工具使用、编排统计、项目资产检测（CLAUDE.md、hooks、skills…）。
+
+明暗双主题、中英切换、打印友好。
+
+---
+
+## 安装
+
+**第一步** —— 添加插件市场：
 
 ```
 /plugin marketplace add lemomo-ai/claude-radar
 ```
 
-**Step 2** — Install the plugin:
+**第二步** —— 安装插件：
 
 ```
 /plugin install claude-radar@claude-radar-marketplace
 ```
 
-**Alternative (local):**
+**本地安装：**
 
 ```bash
 git clone https://github.com/lemomo-ai/claude-radar.git ~/claude-radar
@@ -93,109 +93,108 @@ claude --plugin-dir ~/claude-radar
 
 ---
 
-## Use
+## 使用
 
 ```
 /claude-radar
 ```
 
-1. Claude Radar detects your current working directory and asks "analyze this project?"
-2. Say yes, or pick from the recent-10 list
-3. Wait for parsing + diagnosis to finish (time varies with project size)
-4. The dashboard opens in your browser
+1. Claude Radar 检测你的当前工作目录，问"是不是分析这个项目"
+2. 确认即用，或者从「最近 10 个项目」列表中选
+3. 等待解析 + 诊断完成（时长视项目大小而定）
+4. Dashboard 自动在浏览器打开
 
 ---
 
-## Requirements
+## 环境要求
 
-- **Claude Code** with plugin support
-- **Node.js 18+** (already ships with Claude Code)
-- No `npm install`, no build step, no server
-
----
-
-## Privacy
-
-Your session data stays on your machine:
-
-- Everything runs locally — no network calls
-- No API key, no telemetry, no cloud
-- `~/.claude/projects/` is read-only
-- Reports write to `~/.claude-radar/reports/`
-- CLAUDE.md / memory / agents detection only reads filesystem metadata, never file contents (except CLAUDE.md size)
+- **Claude Code** —— 支持插件版本
+- **Node.js 18+** —— Claude Code 自带
+- 不用 `npm install`、不用编译、不用服务
 
 ---
 
-## How scoring works
+## 隐私
 
-**Two-layer model:**
+你的会话数据始终留在本地：
 
-1. **Scoring** — baselines are computed **entirely in script** (`compute-baselines.mjs` evaluates the structured formulas in `rubric.json`) — zero run-to-run variance — plus a bounded Claude ±15 adjustment that must cite evidence or stay at zero.
-2. **Diagnosis** — independent qualitative pass. Free-form 150-word collaboration profile, core diagnosis, cross-dimension reading, grounded in dimension-targeted evidence moments extracted by the parser.
-
-**Fairness mechanisms:**
-
-- **Project profile** drives category weighting and N/A dimensions
-- **Density-based confidence** — a 5-message project with high signal density no longer gets unfairly shrunk
-- **Efficiency as a first-class signal** — "3 messages, 5 files edited" is recognized as high efficiency, not penalized as low volume
-
-👉 [Read the full Methodology](./docs/METHODOLOGY.md)
+- 所有计算本地完成 —— 不发任何网络请求
+- 无 API key、无遥测、无云端
+- `~/.claude/projects/` 只读访问
+- 报告写入 `~/.claude-radar/reports/`
+- CLAUDE.md / memory / agents 检测只读文件系统元数据，不读取文件内容（CLAUDE.md 只读取大小）
 
 ---
 
-## Transparent rubric
+## 评分原理
 
-All scoring rules live in [`data/rubric.json`](./data/rubric.json):
+**两层模型：**
 
-- 9 dimension definitions, baseline formulas, applicability rules
-- 3 category groupings with per-profile weight tables
-- Grade thresholds (S/A/B/C/D)
-- Diagnosis and suggestion specifications
-- Density-based confidence scaling
+1. **评分层** —— 基线**全部由脚本计算**（`compute-baselines.mjs` 执行 `rubric.json` 里的结构化公式），零运行方差；Claude 只做 ±15 微调,且必须引用证据,否则保持 0。
+2. **诊断层** —— 独立的定性分析。150 字协作画像 + 核心诊断 + 交叉解读，全部锚定在解析器专门抽取的"维度证据瞬间"上。
 
-If you want scoring to match your team's standards, edit this file — the scoring engine re-reads it every run. Suggestions live in [`data/playbook.json`](./data/playbook.json) the same way: each move is a trigger condition + bilingual copy + optional installable asset template. Run `node test/run.mjs` after editing.
+**公允性机制：**
+
+- **项目画像**驱动分类权重和 N/A 维度
+- **密度驱动的 confidence** —— 5 条消息但信号密度高的项目不会被无理由打折
+- **效率作为一等公民信号** —— "3 条消息 5 个文件编辑" 被识别为高效，不再被当作"消息少"扣分
+
+👉 [完整方法论](./docs/METHODOLOGY_zh.md)
 
 ---
 
-## Project structure
+## 评分规则全公开
+
+所有评分规则都在 [`data/rubric.json`](./data/rubric.json)：
+
+- 9 个维度的定义、基线公式、适用性规则
+- 3 大类聚合 + 按 profile 的权重表
+- 等级阈值（S/A/B/C/D）
+- 诊断层和建议层的产出规范
+- 密度驱动的 confidence 缩放
+
+想让评分更贴合团队习惯？改这个文件就行，评分引擎每次运行都重新读。建议招式同理，都在 [`data/playbook.json`](./data/playbook.json)：每条招式 = 触发条件 + 双语文案 + 可选的可安装资产模板。改完记得跑 `node test/run.mjs`。
+
+---
+
+## 项目结构
 
 ```
 claude-radar/
-├── .claude-plugin/plugin.json        # plugin manifest
+├── .claude-plugin/plugin.json        # 插件清单
 ├── skills/analyze/
-│   ├── SKILL.md                      # flow: detect → parse → baselines → adjust/diagnose → render
+│   ├── SKILL.md                      # 流程：检测 → 解析 → 基线 → 微调/诊断 → 渲染
 │   └── scripts/
-│       ├── list-projects.mjs         # scan projects + cwd match
-│       ├── parse-project.mjs         # facts extraction (injection filtering, orchestration signals,
-│       │                             #   slash commands, assets, dimension evidence)
-│       ├── compute-baselines.mjs     # deterministic scoring + playbook triggers + last-run compare
-│       └── render-report.mjs         # JSON → HTML + history archive
-├── viewer/template.html              # dashboard report template
+│       ├── list-projects.mjs         # 扫项目 + cwd 匹配
+│       ├── parse-project.mjs         # 信号提取（注入过滤、编排信号、斜杠命令、资产、维度证据）
+│       ├── compute-baselines.mjs     # 确定性评分 + 招式触发匹配 + 上次报告对比
+│       └── render-report.mjs         # JSON → HTML + 历史归档
+├── viewer/template.html              # Dashboard 报告模板
 ├── data/
-│   ├── rubric.json                   # 9-dim structured formulas + profile weights + diagnosis spec
-│   └── playbook.json                 # 30+ trigger-matched suggestion moves with asset templates
-├── test/run.mjs                      # regression suite (fixtures + baseline arithmetic + triggers)
+│   ├── rubric.json                   # 9 维结构化公式 + 画像权重 + 诊断规范
+│   └── playbook.json                 # 30+ 条按条件触发的建议招式（含资产模板）
+├── test/run.mjs                      # 回归测试（fixtures + 基线算术 + 触发器）
 └── docs/
-    ├── METHODOLOGY.md                # methodology (English)
-    └── METHODOLOGY_zh.md             # methodology (Chinese)
+    ├── METHODOLOGY.md                # 方法论（英文）
+    └── METHODOLOGY_zh.md             # 方法论（中文）
 ```
 
-About 300 KB. Zero runtime dependencies. Run `node test/run.mjs` to verify the deterministic layer.
+约 300 KB，零运行时依赖。跑 `node test/run.mjs` 可验证确定性层。
 
 ---
 
-## License
+## 协议
 
-Claude Radar is released under **CC BY-NC 4.0**:
+Claude Radar 采用 **CC BY-NC 4.0** 协议授权：
 
-- ✅ **Free** for personal, educational, research, and any non-commercial use
-- ✅ **Forking, modifying, sharing** is welcomed — please attribute the original repo and indicate any changes you made
-- ❌ **Commercial use** (bundling into paid products, internal use beyond individual scope in for-profit companies, paid SaaS hosting, selling reports/analyses based on the scoring) requires a separate license
+- ✅ **免费** 用于个人、教育、研究等任何非商业场景
+- ✅ **允许** fork、修改、分享 —— 请注明原作者和原仓库出处，并标注是否做了修改
+- ❌ **商业用途**（打包进付费产品、营利组织超出员工个人评估范围、付费 SaaS 托管、基于评分卖报告/分析等）需要单独的商业授权
 
-**For commercial licensing**, contact: **leifdiao@gmail.com**
+**商业授权咨询：** **leifdiao@gmail.com**
 
-See [LICENSE](./LICENSE) for the full terms, including the 中文版说明.
+完整协议条款（含英文版）请见 [LICENSE](./LICENSE)。
 
 ---
 
-*Built for people who care about the quality of AI collaboration.*
+*为关心 AI 协作质量的人而做。*
